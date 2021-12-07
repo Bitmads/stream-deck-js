@@ -9,6 +9,10 @@ I'm not maintenaning this package, there's no support, I created this package be
 
 I'm planning to add a web based UI later, for now you can use JSON to interact with your device:
 
+IMPORTANT: This is not going to work for you just like that. Many examples below based on my environment, and custom stuff. For example the Audio Output selector button is not going to work for you without adjusting `dist/scripts/changeSoundOutput.sh`.
+
+Track down the code (it's like 1 hour to understand the whole thing), starting from `app.ts`.
+
 ```
 const Pages:Page[] = [
     {
