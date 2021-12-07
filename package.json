@@ -1,0 +1,39 @@
+{
+  "name": "stream-deck",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/app.js",
+  "bin": {
+    "strd": "./dist/cli/stream-deck-cli.js"
+  },
+  "scripts": {
+    "start": "tsc && node dist/app.js",
+    "copy-assets": "cp -rv src/fonts/ dist/fonts/ && cp -rv src/scripts/ dist/scripts/",
+    "dev": "npm run copy-assets && tsc-watch --onSuccess \"node ./dist/app.js\"\n",
+    "dev:app": "npm run dev",
+    "dev:cli": "tsc-watch --onSuccess \"npm i -g\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@julusian/jpeg-turbo": "^1.1.1",
+    "@nut-tree/nut-js": "^1.7.0",
+    "active-win": "^7.6.1",
+    "elgato-stream-deck": "^4.1.0",
+    "open": "^8.4.0",
+    "pureimage": "^0.3.5",
+    "rxjs": "^7.4.0",
+    "sharp": "^0.29.2",
+    "shelljs": "^0.8.4",
+    "stream-buffers": "^3.0.2",
+    "yargs": "^17.3.0"
+  },
+  "devDependencies": {
+    "@types/sharp": "^0.29.2",
+    "@types/yargs": "^17.0.7",
+    "tsc-watch": "^4.5.0",
+    "tslint": "^6.1.3",
+    "typescript": "^4.4.4"
+  }
+}
