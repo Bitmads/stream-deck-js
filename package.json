@@ -1,5 +1,5 @@
 {
-  "name": "stream-deck",
+  "name": "stream-deck-js",
   "version": "1.0.0",
   "description": "",
   "main": "dist/app.js",
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "tsc && node dist/app.js",
-    "copy-assets": "cp -rv src/fonts/ dist/fonts/ && cp -rv src/scripts/ dist/scripts/",
+    "copy-assets": "cp -rv src/fonts/ dist/fonts/ && cp -rv src/scripts/ dist/scripts/ && cp -rv src/images/ dist/images/",
     "dev": "npm run copy-assets && tsc-watch --onSuccess \"node ./dist/app.js\"\n",
     "dev:app": "npm run dev",
     "dev:cli": "tsc-watch --onSuccess \"npm i -g\"",
