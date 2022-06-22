@@ -9,8 +9,13 @@ export interface ImageOptions {
 
 export interface Screen {
     key: number;
+    type: string;
     slug?: 'A1';
     text?: TextOptions | TextOptions[];
+    // Toggle
+    activeIndex?: number;
+    options?: any[];
+    //
     backgroundColor?: string;
     backgroundImage?: {
         src: string,
@@ -39,14 +44,17 @@ export type TextOptions = {
     fontSize?: number,
     fillColor?: string
 }
+let Pages:Page[] = [];
+const streamDeckService = new StreamDeckService(Pages);
 
-const Pages:Page[] = [
+Pages = [
     {
         id:0,
         slug: 'main',
         screens: [
             {
                 key: 0,
+                type: 'commands',
                 text: [
                     {
                         text: 'Focus active',
@@ -66,26 +74,8 @@ const Pages:Page[] = [
                 backgroundColor: '#45b226'
             },
             {
-                key: 1,
-                text: [
-                    {
-                        text: 'Sound Out',
-                        fontSize: 14,
-                        x: 0,
-                        y: 25
-                    },
-                    {
-                        text: 'Asus',
-                        x: 8,
-                        y: 44
-                    }
-                ],
-                onPress:{
-                    commands: ['dist/scripts/changeSoundOutput.sh asus']
-                }
-            },
-            {
-                key: 3,
+                key: 5,
+                type: 'commands',
                 text: {
                     text: '3:A4 OK',
                     x: 18,
@@ -97,6 +87,7 @@ const Pages:Page[] = [
             },
             {
                 key: 6,
+                type: 'commands',
                 text: {
                     text: '6:B2 OK'
                 },
@@ -116,6 +107,7 @@ const Pages:Page[] = [
             },
             {
                 key: 7,
+                type: 'commands',
                 text: {
                     text: '7:B3 OK'
                 },
@@ -135,6 +127,7 @@ const Pages:Page[] = [
             },
             {
                 key: 10,
+                type: 'commands',
                 text: {
                     text: ''
                 },
@@ -146,34 +139,131 @@ const Pages:Page[] = [
                 },
                 backgroundColor: '#3a333b',
                 onPress: {
-                    commands: ["gnome-terminal"]
+                    commands: ["kitty"]
                 },
                 onRelease:{
                     commands: []
                 }
             },
             {
-                key: 14,
-                text: {
-                    text: ''
-                },
-                backgroundImage:{
-                    src: 'images/mute-circle.png',
-                    options: {
-                        fit: "inside",
+                key: 11,
+                type: 'commands',
+                text: [
+                    {
+                        text: 'Sound Out',
+                        fontSize: 14,
+                        x: 0,
+                        y: 25
+                    },
+                    {
+                        text: 'TV',
+                        x: 8,
+                        y: 44
                     }
-                },
-                backgroundColor: '#3a333b',
-                onPress: {
-                    commands: ["amixer -D pulse sset Master 0%"]
-                },
-                onRelease:{
-                    commands: []
+                ],
+                onPress:{
+                    commands: ['dist/scripts/changeSoundOutput.sh tv']
                 }
-            }
+            },
+            {
+                key: 12,
+                type: 'commands',
+                text: [
+                    {
+                        text: 'Sound Out',
+                        fontSize: 14,
+                        x: 0,
+                        y: 25
+                    },
+                    {
+                        text: 'Asus',
+                        x: 8,
+                        y: 44
+                    }
+                ],
+                onPress:{
+                    commands: ['dist/scripts/changeSoundOutput.sh asus']
+                }
+            },
+            {
+                key: 13,
+                type: 'commands',
+                text: [
+                    {
+                        text: 'Sound Out',
+                        fontSize: 14,
+                        x: 0,
+                        y: 25
+                    },
+                    {
+                        text: 'Headphones',
+                        x: 8,
+                        y: 44
+                    }
+                ],
+                onPress:{
+                    commands: ['dist/scripts/changeSoundOutput.sh headphones']
+                }
+            },
+            {
+                key: 14,
+                type: 'toggle',
+                activeIndex: 0,
+                options: [
+                    {
+                        text: {
+                            text: ''
+                        },
+                        backgroundImage:{
+                            src: 'images/mute-circle.png',
+                            options: {
+                                fit: "inside",
+                            }
+                        },
+                        backgroundColor: '#3a333b',
+                        onPress: {
+                            commands: ["amixer -D pulse sset Master mute"]
+                        },
+                        onRelease:{
+                            commands: [
+                            ]
+                        }
+                    },
+                    {
+                        text: {
+                            text: ''
+                        },
+                        backgroundImage:{
+                            src: 'images/unmute.png',
+                            options: {
+                                fit: "inside",
+                            }
+                        },
+                        backgroundColor: '#3a333b',
+                        onPress: {
+                            commands: ["amixer -D pulse sset Master unmute"]
+                        },
+                        onRelease:{
+                            commands: [
+                            ]
+                        }
+                    }
+                ]
+            },
+
         ]
     },
 ];
+
+async function start(){
+    const SDS = new StreamDeckService(Pages);
+    await streamDeckService.init();
+    await streamDeckService.loadPage(Pages[0]);
+}
+
+start().then(()=>{
+    //
+})
 
 // name parameter can be a regex
 function changeWindowByName(name:string){
@@ -184,5 +274,12 @@ function changeWindowByClass(className:string){
     return "xdotool search --desktop 0 --classname '"+className+"' windowactivate";
 }
 
+/// Audio Outputs
+// Samsung TV: pactl set-card-profile alsa_card.pci-0000_0b_00.1 output:hdmi-stereo
+// Main ASUS Monitor: pactl set-card-profile alsa_card.pci-0000_0b_00.1 output:hdmi-stereo-extra2
+// Headphones: pactl set-card-profile alsa_card.pci-0000_0d_00.4 output:analog-stereo
+// Inactivate:  pactl set-card-profile alsa_card.pci-0000_0d_00.4 off
 
-new StreamDeckService(Pages);
+// TODO: Add to the settler shell script: pactl set-default-sink alsa_output.pci-0000_0b_00.1.hdmi-stereo-extra2
+
+
