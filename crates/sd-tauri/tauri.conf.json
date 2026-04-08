@@ -44,9 +44,6 @@
   "plugins": {
     "shell": {
       "open": true
-    },
-    "autostart": {
-      "macOSLauncher": "LaunchAgent"
     }
   }
 }
