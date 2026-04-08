@@ -8,16 +8,45 @@ mod ws_server;
 use state::AppState;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, WindowEvent,
+};
 
 const API_PORT: u16 = 8484;
 const API_BIND: &str = "0.0.0.0";
+
+/// Load app_settings.json and return (minimize_to_tray, start_minimized).
+/// Returns defaults (true, false) if file doesn't exist or is malformed.
+fn load_app_settings() -> (bool, bool) {
+    let base = match dirs::config_dir() {
+        Some(d) => d.join("open-stream-deck"),
+        None => return (true, false),
+    };
+    let path = base.join("app_settings.json");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return (true, false),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return (true, false),
+    };
+    let minimize = json.get("minimizeToTray").and_then(|v| v.as_bool()).unwrap_or(true);
+    let start_min = json.get("startMinimized").and_then(|v| v.as_bool()).unwrap_or(false);
+    (minimize, start_min)
+}
 
 fn main() {
     tracing_subscriber::fmt().init();
 
     let app_state = AppState::new();
     let var_rx = app_state.var_tx.subscribe();
+
+    // Load app settings (tray behavior, start-minimized)
+    let (minimize_to_tray_default, start_minimized) = load_app_settings();
+    app_state.set_minimize_to_tray(minimize_to_tray_default);
 
     // Load API key from OS keychain (if any)
     commands::api_keys::load_api_key_on_startup();
@@ -37,14 +66,56 @@ fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(app_state)
         .manage(Arc::new(AtomicBool::new(false)))
-        .setup(|app| {
+        .setup(move |app| {
             // Open devtools in debug mode
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
             }
+
+            // Build system tray
+            let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
 
             // Start plugin WebSocket server
             let _ws_handle = ws_server::start_ws_server();
@@ -77,7 +148,24 @@ fn main() {
                 }
             });
 
+            // Show window unless start-minimized is enabled
+            if !start_minimized {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                }
+            }
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let state = window.state::<AppState>();
+                if state.should_minimize_to_tray() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::device::list_devices,
@@ -109,6 +197,7 @@ fn main() {
             commands::api_keys::generate_api_key,
             commands::api_keys::list_api_keys,
             commands::api_keys::revoke_api_key,
+            commands::app_settings::set_minimize_to_tray,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Stream Deck");
