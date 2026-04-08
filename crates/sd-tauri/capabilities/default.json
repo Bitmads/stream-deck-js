@@ -1,0 +1,12 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for Open Stream Deck",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
+  ]
+}
