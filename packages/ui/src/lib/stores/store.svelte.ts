@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { renderKeyToDataUrl } from "../utils/render-key";
+
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -161,8 +161,6 @@ class AppStore {
   // ── Internal ──
   revision = $state(0);
   private saveTimer: number | null = null;
-  private syncTimers: Record<string, number> = {};
-  private syncVersion: Record<string, number> = {};
   private activeTimers: Record<string, number> = {};
   private lastStripVarRev = 0;
 
@@ -392,7 +390,7 @@ class AppStore {
     this.selectedKeyIndex = null;
     this.selectedEncoderIndex = null;
     this.revision++;
-    this.syncAllKeysToDevice();
+    this.syncStrip();
   }
 
   switchToDevice(serial: string, prevSerial?: string | null) {
@@ -419,8 +417,7 @@ class AppStore {
     this.favoriteActions = [];
     this.revision++;
     this.scheduleSave();
-    this.syncAllKeysToDevice();
-  }
+      }
 
   async deleteProfile(name: string) {
     await invoke("delete_json_file", { filename: `profile_${name}` }).catch(() => {});
@@ -486,8 +483,7 @@ class AppStore {
     this.sceneStack = [id];
     if (!preserveSelection) { this.selectedKeyIndex = null; this.selectedEncoderIndex = null; }
     this.revision++;
-    this.syncAllKeysToDevice();
-  }
+      }
 
   pushScene(id: string) {
     if (!this.scenes[id]) return;
@@ -496,8 +492,7 @@ class AppStore {
     this.activeSceneId = id;
     this.selectedKeyIndex = null;
     this.revision++;
-    this.syncAllKeysToDevice();
-  }
+      }
 
   popScene() {
     if (this.sceneStack.length <= 1) return;
@@ -507,8 +502,7 @@ class AppStore {
     this.carryPinnedKeys(prevId, this.activeSceneId);
     this.selectedKeyIndex = null;
     this.revision++;
-    this.syncAllKeysToDevice();
-  }
+      }
 
   private carryPinnedKeys(fromId: string | null, toId: string) {
     if (!fromId) return;
@@ -563,7 +557,6 @@ class AppStore {
     if (b) scene.keys[String(from)] = b; else delete scene.keys[String(from)];
     this.revision++;
     this.saveAndSync(from);
-    this.syncKeyToDevice(to);
   }
 
   updateKeySetting(keyIndex: number, key: string, value: string) {
@@ -1011,7 +1004,7 @@ class AppStore {
     this.redoStack = [...this.redoStack, { sceneId: scene.id, keys: JSON.parse(JSON.stringify(scene.keys)) }];
     const prev = this.undoStack[this.undoStack.length - 1];
     this.undoStack = this.undoStack.slice(0, -1);
-    if (prev.sceneId === scene.id) { scene.keys = prev.keys; this.revision++; this.syncAllKeysToDevice(); }
+    if (prev.sceneId === scene.id) { scene.keys = prev.keys; this.revision++; }
   }
 
   redo() {
@@ -1021,7 +1014,7 @@ class AppStore {
     this.undoStack = [...this.undoStack, { sceneId: scene.id, keys: JSON.parse(JSON.stringify(scene.keys)) }];
     const next = this.redoStack[this.redoStack.length - 1];
     this.redoStack = this.redoStack.slice(0, -1);
-    if (next.sceneId === scene.id) { scene.keys = next.keys; this.revision++; this.syncAllKeysToDevice(); }
+    if (next.sceneId === scene.id) { scene.keys = next.keys; this.revision++; }
   }
 
   canUndo(): boolean { return this.undoStack.length > 0; }
@@ -1037,21 +1030,21 @@ class AppStore {
       clearInterval(this.activeTimers[String(keyIndex)]);
       delete this.activeTimers[String(keyIndex)];
       a.text = { ...this.defaultTextConfig(), text: this.formatTime(duration), fontSize: 20, color: "#ffffff" };
-      this.revision++; this.syncKeyToDevice(keyIndex); return;
+      this.revision++; return;
     }
     let remaining = duration;
     a.text = { ...this.defaultTextConfig(), text: this.formatTime(remaining), fontSize: 20, color: "#00ff00" };
-    this.revision++; this.syncKeyToDevice(keyIndex);
+    this.revision++;
     this.activeTimers[String(keyIndex)] = window.setInterval(() => {
       remaining--;
       const ka = this.activeScene?.keys[String(keyIndex)];
       if (!ka || remaining <= 0) {
         clearInterval(this.activeTimers[String(keyIndex)]); delete this.activeTimers[String(keyIndex)];
-        if (ka) { ka.text = { ...this.defaultTextConfig(), text: "DONE", fontSize: 16, color: "#ff0000" }; this.revision++; this.syncKeyToDevice(keyIndex); }
+        if (ka) { ka.text = { ...this.defaultTextConfig(), text: "DONE", fontSize: 16, color: "#ff0000" }; this.revision++; }
         return;
       }
       ka.text = { ...this.defaultTextConfig(), text: this.formatTime(remaining), fontSize: 20, color: remaining <= 10 ? "#ff4444" : "#00ff00" };
-      this.revision++; this.syncKeyToDevice(keyIndex);
+      this.revision++;
     }, 1000);
   }
 
@@ -1061,7 +1054,7 @@ class AppStore {
     const val = parseInt(a.settings.value || "0") + 1;
     a.settings.value = String(val);
     a.text = { ...this.defaultTextConfig(), text: String(val), fontSize: 24, color: "#ffffff" };
-    this.revision++; this.syncKeyToDevice(keyIndex);
+    this.revision++;
   }
 
   // ═══ Helpers ═══════════════════════════════════════════════
@@ -1108,39 +1101,13 @@ class AppStore {
 
   // ═══ Device Sync ═══════════════════════════════════════════
 
-  /** Sync key to device AND save profile. Called from user-initiated mutations. */
-  private saveAndSync(keyIndex: number) {
+  /** Save profile after user-initiated mutations. Device sync is handled by KeySlot reactivity. */
+  private saveAndSync(_keyIndex: number) {
     this.scheduleSave();
-    this.syncKeyToDevice(keyIndex);
   }
 
-  syncKeyToDevice(keyIndex: number) {
-    const k = String(keyIndex);
-    if (this.syncTimers[k]) clearTimeout(this.syncTimers[k]);
-    const ver = (this.syncVersion[k] || 0) + 1;
-    this.syncVersion[k] = ver;
-    this.syncTimers[k] = window.setTimeout(async () => {
-      if (this.syncVersion[k] !== ver) return;
-      const a = this.getKeyAssignment(keyIndex);
-      try {
-        if (a) {
-          const url = await renderKeyToDataUrl(a, this.selectedDevice?.key_size || 72);
-          if (this.syncVersion[k] !== ver) return;
-          await invoke("send_rendered_image", { keyIndex, imageData: url });
-        } else {
-          await invoke("clear_key", { keyIndex });
-        }
-      } catch {}
-    }, 100);
-  }
-
-  syncAllKeysToDevice() {
-    this.syncStrip();
-    const scene = this.activeScene;
-    if (!scene) return;
-    const maxKey = Object.keys(scene.keys).reduce((max, k) => Math.max(max, Number(k)), -1);
-    for (let i = 0; i <= maxKey; i++) this.syncKeyToDevice(i);
-  }
+  // Device key sync is handled by KeySlot component reactivity.
+  // Strip sync is triggered by revision changes in the strip canvas.
 }
 
 // ─── Singleton ───────────────────────────────────────────────

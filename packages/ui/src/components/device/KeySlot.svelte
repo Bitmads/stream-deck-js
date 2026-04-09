@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
   import { getSelectedKeyIndex, selectKey, getKeyAssignment, swapKeys, assignAction, findAction } from "../../lib/stores/editor.svelte";
   import { renderKeyToDataUrl } from "../../lib/utils/render-key";
   import { getVariable, extractVariableNames } from "../../lib/stores/variables.svelte";
@@ -11,6 +12,7 @@
 
   let previewUrl = $state<string | null>(null);
   let renderVersion = 0;
+  let deviceSyncTimer: number | undefined;
 
   // Build a string of resolved variable values used by this key — changes trigger re-render
   let usedVarValues = $derived(() => {
@@ -24,7 +26,7 @@
     return [...names].map(n => getVariable(n)).join("|");
   });
 
-  // Preview only — device sync is handled by store.syncKeyToDevice
+  // Single render pipeline: update preview AND push to device
   $effect(() => {
     const currentA = a;
     void usedVarValues(); // track only variables this key uses
@@ -33,10 +35,19 @@
       renderKeyToDataUrl(currentA, size).then((url) => {
         if (version === renderVersion) {
           previewUrl = url;
+          // Debounced device push to avoid flooding
+          clearTimeout(deviceSyncTimer);
+          deviceSyncTimer = window.setTimeout(() => {
+            if (renderVersion === version) {
+              invoke("send_rendered_image", { keyIndex, imageData: url }).catch(() => {});
+            }
+          }, 150);
         }
       });
     } else {
       previewUrl = null;
+      clearTimeout(deviceSyncTimer);
+      invoke("clear_key", { keyIndex }).catch(() => {});
     }
   });
 
