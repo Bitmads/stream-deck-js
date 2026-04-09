@@ -60,7 +60,7 @@ fn execute_single(action_type: &str, s: &serde_json::Value) -> Result<(), String
             let method = s.get("method").and_then(|v| v.as_str()).unwrap_or("POST").to_string();
             let headers = s.get("headers").and_then(|v| v.as_str()).unwrap_or("").to_string();
             let body = s.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if !url.is_empty() {
+            if !url.is_empty() && is_safe_url(&url) {
                 std::thread::spawn(move || {
                     match execute_http(&url, &method, &headers, &body) {
                         Ok(st) => tracing::info!("HTTP {}: {}", method, st),
@@ -200,7 +200,10 @@ fn combo_to_sendkeys(combo: &str) -> String {
 }
 
 fn execute_http(url: &str, method: &str, headers_str: &str, body: &str) -> Result<String, String> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
     let mut b = match method {
         "GET" => client.get(url),
         "PUT" => client.put(url),

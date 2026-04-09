@@ -10,6 +10,7 @@
   import type { TextConfig, ActionDef, EncoderConfig, StripItem } from "../../lib/stores/editor.svelte";
   import TextConfigPanel from "../icon/TextConfig.svelte";
   import IconBrowser from "../icon/IconBrowser.svelte";
+  import HAEntityPicker from "../input/HAEntityPicker.svelte";
   import { ha } from "../../lib/plugins/homeassistant";
   import { resolveTemplate } from "../../lib/stores/variables.svelte";
   import { ACTION_TYPES } from "../../lib/stores/store.svelte";
@@ -225,24 +226,7 @@
           {:else if currentAction?.id === "ha-service"}
             {@const gs = ((si as any)[gesture.settingsField] || {}) as Record<string, string>}
             <div class="enc-settings">
-              {#if gs.ha_entity}
-                <div class="ha-chip"><span>{ha.getEntity(gs.ha_entity)?.friendly_name || gs.ha_entity}</span><button onclick={() => updateStripItem(si.id, { [gesture.settingsField]: {} })}>×</button></div>
-                {@const ctrls = ha.getEntityControls(gs.ha_entity)}
-                {@const svcs = ha.getEntityServices(gs.ha_entity)}
-                {#if ctrls.length > 0}
-                  <label class="fl">Control</label>
-                  <div class="chips">{#each ctrls as c}<button class="chip" class:active={gs.ha_control===c.id} onclick={() => { ha.addWatch(gs.ha_entity); updateStripItem(si.id, { [gesture.settingsField]: {...gs, ha_domain:c.domain, ha_service:c.service, ha_control:c.id, ha_attr:c.attr} }); }}>{c.label}</button>{/each}</div>
-                {/if}
-                {#if svcs.length > 0}
-                  <label class="fl">Service</label>
-                  <div class="chips">{#each svcs as s}<button class="chip" class:active={gs.ha_service===s.service && !gs.ha_attr} onclick={() => updateStripItem(si.id, { [gesture.settingsField]: {...gs, ha_domain:s.domain, ha_service:s.service, ha_control:s.service, ha_attr:""} })}>{s.name}</button>{/each}</div>
-                {/if}
-              {:else}
-                <input type="text" bind:value={haEntityQuery} placeholder="Search entity..." />
-                {#if haEntityQuery.length > 0}
-                  <div class="ent-list">{#each haEntities as ent}<button onclick={() => { updateStripItem(si.id, { [gesture.settingsField]: {ha_entity:ent.entity_id} }); haEntityQuery=""; }}><span>{ent.friendly_name}</span><span class="ent-d">{ent.domain}</span></button>{/each}</div>
-                {/if}
-              {/if}
+              <HAEntityPicker settings={gs} onchange={(updated) => updateStripItem(si.id, { [gesture.settingsField]: updated })} />
             </div>
           {:else if currentAction?.id === "http-request"}
             {@const gs = ((si as any)[gesture.settingsField] || {}) as Record<string, string>}
@@ -328,24 +312,7 @@
                 <div class="mrow">{#each ["GET","POST","PUT","DELETE"] as m}<button class:active={(es.method||'POST')===m} onclick={() => updateEncSettings({...es,method:m})}>{m}</button>{/each}</div>
                 <textarea value={es.body || ''} placeholder={'{"key":"val"}'} oninput={(e) => updateEncSettings({...es, body: (e.target as HTMLTextAreaElement).value})} rows="2"></textarea>
               {:else if ea.id === "ha-service"}
-                {#if es.ha_entity}
-                  <div class="ha-chip"><span>{ha.getEntity(es.ha_entity)?.friendly_name || es.ha_entity}</span><button onclick={() => updateEncSettings({})}>×</button></div>
-                  {@const controls = ha.getEntityControls(es.ha_entity)}
-                  {@const services = ha.getEntityServices(es.ha_entity)}
-                  {#if encoderTab === "rotate" && controls.length > 0}
-                    <label class="fl">Control</label>
-                    <div class="chips">{#each controls as c}<button class="chip" class:active={es.ha_control===c.id} onclick={() => { ha.addWatch(es.ha_entity); updateEncSettings({...es, ha_domain:c.domain, ha_service:c.service, ha_control:c.id, ha_attr:c.attr}); if(c.attr && encoderCfg) handleEncoderUpdate({value:`{{$ha.${es.ha_entity}.${c.attr}}}`, min:String(c.min), max:String(c.max), step:c.step}); }}>{c.label}</button>{/each}</div>
-                  {/if}
-                  {#if services.length > 0}
-                    <label class="fl">Service</label>
-                    <div class="chips">{#each services as s}<button class="chip" class:active={es.ha_service===s.service && !es.ha_attr} onclick={() => updateEncSettings({...es, ha_domain:s.domain, ha_service:s.service, ha_control:s.service, ha_attr:""})}>{s.name}</button>{/each}</div>
-                  {/if}
-                {:else}
-                  <input type="text" bind:value={haEntityQuery} placeholder="Search entity..." />
-                  {#if haEntityQuery.length > 0}
-                    <div class="ent-list">{#each haEntities as ent}<button onclick={() => { updateEncSettings({ha_entity:ent.entity_id}); haEntityQuery=""; }}><span>{ent.friendly_name}</span><span class="ent-d">{ent.domain}</span></button>{/each}</div>
-                  {/if}
-                {/if}
+                <HAEntityPicker settings={es} onchange={(updated) => updateEncSettings(updated)} oncontrolselect={(c) => { if (encoderTab === "rotate" && c.attr && encoderCfg) handleEncoderUpdate({ value: `{{$ha.${es.ha_entity}.${c.attr}}}`, min: String(c.min), max: String(c.max), step: c.step }); }} />
               {:else if ea.id === "command"}
                 <input type="text" value={es.command||''} placeholder="command..." oninput={(e) => updateEncSettings({...es, command:(e.target as HTMLInputElement).value})} />
               {/if}
@@ -410,24 +377,7 @@
                 <label class="fl">Start value</label>
                 <input type="number" value={assignment.settings.value||'0'} oninput={(e) => handleSettingChange('value', (e.target as HTMLInputElement).value)} />
               {:else if assignment.action.id === "ha-service"}
-                {#if assignment.settings.ha_entity}
-                  <div class="ha-chip"><span>{ha.getEntity(assignment.settings.ha_entity)?.friendly_name || assignment.settings.ha_entity}</span><button onclick={() => { handleSettingChange('ha_entity', ''); handleSettingChange('ha_domain', ''); handleSettingChange('ha_service', ''); handleSettingChange('ha_attr', ''); handleSettingChange('ha_control', ''); }}>×</button></div>
-                  {@const ctrls = ha.getEntityControls(assignment.settings.ha_entity)}
-                  {@const svcs = ha.getEntityServices(assignment.settings.ha_entity)}
-                  {#if ctrls.length > 0}
-                    <label class="fl">Control</label>
-                    <div class="chips">{#each ctrls as c}<button class="chip" class:active={assignment.settings.ha_control===c.id} onclick={() => { ha.addWatch(assignment.settings.ha_entity); handleSettingChange('ha_domain', c.domain); handleSettingChange('ha_service', c.service); handleSettingChange('ha_control', c.id); handleSettingChange('ha_attr', c.attr); }}>{c.label}</button>{/each}</div>
-                  {/if}
-                  {#if svcs.length > 0}
-                    <label class="fl">Service</label>
-                    <div class="chips">{#each svcs as s}<button class="chip" class:active={assignment.settings.ha_service===s.service && !assignment.settings.ha_attr} onclick={() => { handleSettingChange('ha_domain', s.domain); handleSettingChange('ha_service', s.service); handleSettingChange('ha_control', s.service); handleSettingChange('ha_attr', ''); }}>{s.name}</button>{/each}</div>
-                  {/if}
-                {:else}
-                  <input type="text" bind:value={haEntityQuery} placeholder="Search entity..." />
-                  {#if haEntityQuery.length > 0}
-                    <div class="ent-list">{#each haEntities as ent}<button onclick={() => { handleSettingChange('ha_entity', ent.entity_id); haEntityQuery = ""; }}><span>{ent.friendly_name}</span><span class="ent-d">{ent.domain}</span></button>{/each}</div>
-                  {/if}
-                {/if}
+                <HAEntityPicker settings={assignment.settings} onchange={(updated) => { for (const [k, v] of Object.entries(updated)) handleSettingChange(k, v); }} />
               {:else if assignment.action.id === "ha-custom"}
                 <label class="fl">Custom JSON</label>
                 <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea>
