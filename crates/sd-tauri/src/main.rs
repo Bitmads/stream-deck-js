@@ -41,6 +41,16 @@ fn load_app_settings() -> (bool, bool) {
 fn main() {
     tracing_subscriber::fmt().init();
 
+    // Ensure WebKitGTK works regardless of GPU/driver state.
+    // Without these, WebKitGTK can abort() on systems where GBM/EGL
+    // initialisation fails (e.g. headless, Wayland edge-cases, driver bugs).
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
+    }
+
     let app_state = AppState::new();
     let var_rx = app_state.var_tx.subscribe();
 
