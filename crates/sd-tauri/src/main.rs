@@ -66,6 +66,7 @@ fn main() {
         AppState {
             profile_store: app_state.profile_store.clone(),
             device_manager: app_state.device_manager.clone(),
+            plugin_manager: app_state.plugin_manager.clone(),
             variables: app_state.variables.clone(),
             var_tx: app_state.var_tx.clone(),
             minimize_to_tray: app_state.minimize_to_tray.clone(),
@@ -208,6 +209,9 @@ fn main() {
             commands::api_keys::list_api_keys,
             commands::api_keys::revoke_api_key,
             commands::app_settings::set_minimize_to_tray,
+            commands::plugin::discover_external_plugins,
+            commands::plugin::start_external_plugin,
+            commands::plugin::stop_external_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Stream Deck");

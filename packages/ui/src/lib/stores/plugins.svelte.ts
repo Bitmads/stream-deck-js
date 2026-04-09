@@ -132,10 +132,49 @@ export function getPluginsWithSettings(): PluginDef[] {
   return plugins.filter(p => isEnabled(p.id) && p.settingsComponent);
 }
 
-/** Initialize the registry: load persisted states, enable plugins. */
+/** Discover external plugins from the backend and register them. */
+async function discoverExternalPlugins() {
+  try {
+    const externals = await invoke<Array<{
+      uuid: string; name: string; description: string;
+      version: string; author: string;
+      actions: Array<{ uuid: string; name: string }>;
+    }>>("discover_external_plugins");
+
+    for (const ext of externals) {
+      const actions: ActionDef[] = ext.actions.map(a => ({
+        id: a.uuid, label: a.name, icon: "🔌", color: "#8e44ad",
+      }));
+
+      registerPlugin({
+        id: ext.uuid,
+        name: ext.name,
+        description: ext.description || "External plugin",
+        version: ext.version,
+        author: ext.author,
+        icon: "🔌",
+        type: "external",
+        actions,
+        init: async () => {
+          await invoke("start_external_plugin", { uuid: ext.uuid }).catch(() => {});
+        },
+        destroy: async () => {
+          await invoke("stop_external_plugin", { uuid: ext.uuid }).catch(() => {});
+        },
+      });
+    }
+  } catch (e) {
+    console.warn("External plugin discovery failed:", e);
+  }
+}
+
+/** Initialize the registry: load persisted states, discover external, enable plugins. */
 export async function initPluginRegistry() {
   const saved = await loadPluginStates();
   Object.assign(pluginStates, saved);
+
+  // Discover external plugins from disk
+  await discoverExternalPlugins();
 
   // Enable all plugins that should be active
   for (const def of plugins) {
