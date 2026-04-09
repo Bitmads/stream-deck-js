@@ -1,7 +1,18 @@
-import { invoke } from "@tauri-apps/api/core";
+import { executePluginAction } from "../../stores/store.svelte";
 import type { PluginDef } from "../../stores/plugins.svelte";
 
+export interface MultiActionStep {
+  actionId: string;
+  actionLabel: string;
+  settings: Record<string, string>;
+  delayMs: number;
+}
+
 const MULTI_ACTION = { id: "multi-action", label: "Multi-Action", icon: "▶▶", color: "#e67e22" };
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export const multiActionPluginDef: PluginDef = {
   id: "multi-action",
@@ -14,7 +25,14 @@ export const multiActionPluginDef: PluginDef = {
   actions: [MULTI_ACTION],
   actionExecutors: {
     "multi-action": async (s) => {
-      await invoke("execute_action", { actionType: "multi-action", settings: JSON.stringify(s) });
+      const stepsJson = s.steps;
+      if (!stepsJson) return;
+      let steps: MultiActionStep[];
+      try { steps = JSON.parse(stepsJson); } catch { return; }
+      for (const step of steps) {
+        await executePluginAction(step.actionId, step.settings);
+        if (step.delayMs > 0) await sleep(step.delayMs);
+      }
     },
   },
 };

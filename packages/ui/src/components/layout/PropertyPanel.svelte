@@ -12,6 +12,8 @@
   import IconBrowser from "../icon/IconBrowser.svelte";
   import { ha } from "../../lib/plugins/homeassistant";
   import { resolveTemplate } from "../../lib/stores/variables.svelte";
+  import { ACTION_TYPES } from "../../lib/stores/store.svelte";
+  import type { MultiActionStep } from "../../lib/plugins/multi-action";
 
   let selectedKey = $derived(getSelectedKeyIndex());
   let selectedEncoder = $derived(getSelectedEncoderIndex());
@@ -41,6 +43,41 @@
   // HA search
   let haEntityQuery = $state("");
   let haEntities = $derived(ha.searchEntities(haEntityQuery));
+
+  // Multi-action
+  let maStepPicker = $state<number | null>(null); // index of step being edited, or -1 for new
+  let maStepQuery = $state("");
+  let maStepResults = $derived(searchActions(maStepQuery));
+
+  function getMultiSteps(a: any): MultiActionStep[] {
+    try { return a?.settings?.steps ? JSON.parse(a.settings.steps) : []; } catch { return []; }
+  }
+  function saveMultiSteps(steps: MultiActionStep[]) {
+    handleSettingChange("steps", JSON.stringify(steps));
+  }
+  function addMultiStep(action: ActionDef) {
+    const steps = getMultiSteps(assignment);
+    steps.push({ actionId: action.id, actionLabel: action.label, settings: {}, delayMs: 0 });
+    saveMultiSteps(steps);
+    maStepPicker = null;
+    maStepQuery = "";
+  }
+  function removeMultiStep(idx: number) {
+    const steps = getMultiSteps(assignment);
+    steps.splice(idx, 1);
+    saveMultiSteps(steps);
+  }
+  function updateMultiStepDelay(idx: number, ms: number) {
+    const steps = getMultiSteps(assignment);
+    if (steps[idx]) { steps[idx].delayMs = ms; saveMultiSteps(steps); }
+  }
+  function moveMultiStep(idx: number, dir: -1 | 1) {
+    const steps = getMultiSteps(assignment);
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= steps.length) return;
+    [steps[idx], steps[newIdx]] = [steps[newIdx], steps[idx]];
+    saveMultiSteps(steps);
+  }
 
   // Force Action tab when encoder is selected
   $effect(() => {
@@ -393,6 +430,40 @@
               {:else if assignment.action.id === "ha-custom"}
                 <label class="fl">Custom JSON</label>
                 <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea>
+              {:else if assignment.action.id === "multi-action"}
+                {@const steps = getMultiSteps(assignment)}
+                <div class="ma-steps">
+                  {#each steps as step, i}
+                    <div class="ma-step">
+                      <div class="ma-step-head">
+                        <span class="ma-step-num">{i + 1}</span>
+                        <span class="ma-step-label">{step.actionLabel}</span>
+                        <div class="ma-step-btns">
+                          <button class="ma-btn" onclick={() => moveMultiStep(i, -1)} disabled={i === 0}>&#x25B2;</button>
+                          <button class="ma-btn" onclick={() => moveMultiStep(i, 1)} disabled={i === steps.length - 1}>&#x25BC;</button>
+                          <button class="ma-btn danger" onclick={() => removeMultiStep(i)}>×</button>
+                        </div>
+                      </div>
+                      <div class="ma-step-delay">
+                        <label>Delay after</label>
+                        <input type="number" value={step.delayMs} min="0" step="100" oninput={(e) => updateMultiStepDelay(i, parseInt((e.target as HTMLInputElement).value) || 0)} />
+                        <span>ms</span>
+                      </div>
+                    </div>
+                  {/each}
+                </div>
+                {#if maStepPicker !== null}
+                  <input class="search-in" type="text" bind:value={maStepQuery} placeholder="Search action..." />
+                  <div class="action-drop">
+                    {#each maStepResults.filter(a => a.id !== "multi-action") as action}
+                      <button onclick={() => addMultiStep(action)}>
+                        <span style="color:{action.color};">{action.icon}</span> {action.label}
+                      </button>
+                    {/each}
+                  </div>
+                {:else}
+                  <button class="ma-add" onclick={() => { maStepPicker = -1; maStepQuery = ""; }}>+ Add Step</button>
+                {/if}
               {/if}
             </div>
           {/if}
@@ -532,4 +603,21 @@
   .add-text-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; border: 1px dashed var(--border); }
   .add-text-btn:hover { color: var(--accent); border-color: var(--accent); }
   .hint-text { font-size: 9px; color: var(--text-muted); margin-top: 6px; display: block; line-height: 1.4; }
+
+  .ma-steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+  .ma-step { background: var(--bg-primary); border-radius: var(--radius-sm); padding: 8px; border: 1px solid var(--border); }
+  .ma-step-head { display: flex; align-items: center; gap: 6px; }
+  .ma-step-num { font-size: 10px; color: var(--text-muted); background: var(--bg-tertiary); width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ma-step-label { flex: 1; font-size: 12px; color: var(--text-primary); }
+  .ma-step-btns { display: flex; gap: 2px; }
+  .ma-btn { font-size: 10px; padding: 2px 5px; border-radius: 3px; background: var(--bg-tertiary); color: var(--text-muted); cursor: pointer; }
+  .ma-btn:hover { color: var(--text-primary); }
+  .ma-btn.danger:hover { color: var(--danger); }
+  .ma-btn:disabled { opacity: 0.3; cursor: default; }
+  .ma-step-delay { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+  .ma-step-delay label { font-size: 10px; color: var(--text-muted); }
+  .ma-step-delay input { width: 60px; padding: 2px 4px; font-size: 11px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); }
+  .ma-step-delay span { font-size: 10px; color: var(--text-muted); }
+  .ma-add { width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; border: 1px dashed var(--border); }
+  .ma-add:hover { color: var(--accent); border-color: var(--accent); }
 </style>
