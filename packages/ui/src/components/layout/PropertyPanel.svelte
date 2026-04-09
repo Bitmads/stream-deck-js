@@ -372,14 +372,24 @@
                 <label class="fl">Start value</label>
                 <input type="number" value={assignment.settings.value||'0'} oninput={(e) => handleSettingChange('value', (e.target as HTMLInputElement).value)} />
               {:else if assignment.action.id === "ha-service"}
-                <label class="fl">Entity</label>
-                <input type="text" value={assignment.settings.ha_entity||''} placeholder="light.living_room" oninput={(e) => handleSettingChange('ha_entity', (e.target as HTMLInputElement).value)} />
-                <label class="fl">Domain</label>
-                <input type="text" value={assignment.settings.ha_domain||''} placeholder="light" oninput={(e) => handleSettingChange('ha_domain', (e.target as HTMLInputElement).value)} />
-                <label class="fl">Service</label>
-                <input type="text" value={assignment.settings.ha_service||''} placeholder="toggle" oninput={(e) => handleSettingChange('ha_service', (e.target as HTMLInputElement).value)} />
-                <label class="fl">Service Data (JSON)</label>
-                <textarea value={assignment.settings.ha_service_data||''} placeholder={'{"brightness": 255}'} oninput={(e) => handleSettingChange('ha_service_data', (e.target as HTMLTextAreaElement).value)} rows="2"></textarea>
+                {#if assignment.settings.ha_entity}
+                  <div class="ha-chip"><span>{ha.getEntity(assignment.settings.ha_entity)?.friendly_name || assignment.settings.ha_entity}</span><button onclick={() => { handleSettingChange('ha_entity', ''); handleSettingChange('ha_domain', ''); handleSettingChange('ha_service', ''); handleSettingChange('ha_attr', ''); handleSettingChange('ha_control', ''); }}>×</button></div>
+                  {@const ctrls = ha.getEntityControls(assignment.settings.ha_entity)}
+                  {@const svcs = ha.getEntityServices(assignment.settings.ha_entity)}
+                  {#if ctrls.length > 0}
+                    <label class="fl">Control</label>
+                    <div class="chips">{#each ctrls as c}<button class="chip" class:active={assignment.settings.ha_control===c.id} onclick={() => { ha.addWatch(assignment.settings.ha_entity); handleSettingChange('ha_domain', c.domain); handleSettingChange('ha_service', c.service); handleSettingChange('ha_control', c.id); handleSettingChange('ha_attr', c.attr); }}>{c.label}</button>{/each}</div>
+                  {/if}
+                  {#if svcs.length > 0}
+                    <label class="fl">Service</label>
+                    <div class="chips">{#each svcs as s}<button class="chip" class:active={assignment.settings.ha_service===s.service && !assignment.settings.ha_attr} onclick={() => { handleSettingChange('ha_domain', s.domain); handleSettingChange('ha_service', s.service); handleSettingChange('ha_control', s.service); handleSettingChange('ha_attr', ''); }}>{s.name}</button>{/each}</div>
+                  {/if}
+                {:else}
+                  <input type="text" bind:value={haEntityQuery} placeholder="Search entity..." />
+                  {#if haEntityQuery.length > 0}
+                    <div class="ent-list">{#each haEntities as ent}<button onclick={() => { handleSettingChange('ha_entity', ent.entity_id); haEntityQuery = ""; }}><span>{ent.friendly_name}</span><span class="ent-d">{ent.domain}</span></button>{/each}</div>
+                  {/if}
+                {/if}
               {:else if assignment.action.id === "ha-custom"}
                 <label class="fl">Custom JSON</label>
                 <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea>
