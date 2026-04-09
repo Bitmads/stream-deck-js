@@ -594,10 +594,10 @@ class AppStore {
     if (!scene) return;
     const a = scene.keys[String(keyIndex)];
     if (!a) return;
-    const texts = a.texts ? [...a.texts] : [];
-    while (texts.length <= textIndex) texts.push(this.defaultTextConfig());
-    texts[textIndex] = textConfig;
-    scene.keys[String(keyIndex)] = { ...a, texts, text: texts[0] };
+    if (!a.texts) a.texts = [];
+    while (a.texts.length <= textIndex) a.texts.push(this.defaultTextConfig());
+    a.texts[textIndex] = textConfig;
+    a.text = a.texts[0];
     this.revision++;
     this.saveAndSync(keyIndex);
   }
@@ -608,9 +608,9 @@ class AppStore {
     if (!scene) return;
     const a = scene.keys[String(keyIndex)];
     if (!a) return;
-    const texts = a.texts ? [...a.texts] : (a.text ? [a.text] : []);
-    texts.push(this.defaultTextConfig());
-    scene.keys[String(keyIndex)] = { ...a, texts, text: texts[0] };
+    if (!a.texts) a.texts = a.text ? [a.text] : [];
+    a.texts.push(this.defaultTextConfig());
+    a.text = a.texts[0];
     this.revision++;
     this.saveAndSync(keyIndex);
   }
@@ -620,8 +620,8 @@ class AppStore {
     if (!scene) return;
     const a = scene.keys[String(keyIndex)];
     if (!a?.texts || a.texts.length <= 1) return;
-    const texts = a.texts.filter((_, i) => i !== textIndex);
-    scene.keys[String(keyIndex)] = { ...a, texts, text: texts[0] };
+    a.texts.splice(textIndex, 1);
+    a.text = a.texts[0];
     this.revision++;
     this.saveAndSync(keyIndex);
   }
@@ -647,7 +647,7 @@ class AppStore {
     const scene = this.activeScene;
     if (!scene) return;
     const a = scene.keys[String(keyIndex)];
-    if (a) { scene.keys[String(keyIndex)] = { ...a, pinned: !a.pinned }; this.revision++; this.scheduleSave(); }
+    if (a) { a.pinned = !a.pinned; this.revision++; this.scheduleSave(); }
   }
 
   isPinned(keyIndex: number): boolean { return this.getKeyAssignment(keyIndex)?.pinned ?? false; }
