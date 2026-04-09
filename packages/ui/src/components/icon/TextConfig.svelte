@@ -21,6 +21,21 @@
     />
   </div>
 
+  <div class="field">
+    <span class="lbl">Font</span>
+    <select value={config.fontFamily} onchange={(e) => update({ fontFamily: (e.target as HTMLSelectElement).value })}>
+      <option value="sans-serif">System Sans-Serif</option>
+      <option value="serif">System Serif</option>
+      <option value="monospace">System Monospace</option>
+      <option value="Roboto">Roboto</option>
+      <option value="Inter">Inter</option>
+      <option value="Source Sans 3">Source Sans 3</option>
+      <option value="Fira Code">Fira Code</option>
+      <option value="JetBrains Mono">JetBrains Mono</option>
+      <option value="Orbitron">Orbitron</option>
+    </select>
+  </div>
+
   <div class="row">
     <div class="field half">
       <span class="lbl">Font Size</span>
@@ -138,6 +153,19 @@
   }
   .btn-group button:hover { color: var(--text-primary); }
   .btn-group button.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+  .field select {
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+    cursor: pointer;
+  }
+  .field select:focus { border-color: var(--accent); }
 
   .field input[type="checkbox"] { margin-right: 4px; }
 </style>
