@@ -14,6 +14,7 @@
   import { resolveTemplate } from "../../lib/stores/variables.svelte";
   import { ACTION_TYPES } from "../../lib/stores/store.svelte";
   import type { MultiActionStep } from "../../lib/plugins/multi-action";
+  import VarInput from "../input/VarInput.svelte";
 
   let selectedKey = $derived(getSelectedKeyIndex());
   let selectedEncoder = $derived(getSelectedEncoderIndex());
@@ -378,7 +379,7 @@
             <div class="act-settings">
               {#if assignment.action.id === "command"}
                 <label class="fl">Command</label>
-                <input type="text" value={assignment.settings.command||''} placeholder="e.g. firefox" oninput={(e) => handleSettingChange('command', (e.target as HTMLInputElement).value)} />
+                <VarInput value={assignment.settings.command||''} placeholder="e.g. firefox" onchange={(v) => handleSettingChange('command', v)} />
               {:else if assignment.action.id === "hotkey"}
                 <label class="fl">Key</label>
                 <input type="text" value={assignment.settings.key||''} placeholder="e.g. F5" oninput={(e) => handleSettingChange('key', (e.target as HTMLInputElement).value)} />
@@ -386,18 +387,18 @@
                 <input type="text" value={assignment.settings.modifiers||''} placeholder="ctrl, shift" oninput={(e) => handleSettingChange('modifiers', (e.target as HTMLInputElement).value)} />
               {:else if assignment.action.id === "launch"}
                 <label class="fl">Application</label>
-                <input type="text" value={assignment.settings.target||''} placeholder="firefox" oninput={(e) => handleSettingChange('target', (e.target as HTMLInputElement).value)} />
+                <VarInput value={assignment.settings.target||''} placeholder="firefox" onchange={(v) => handleSettingChange('target', v)} />
               {:else if assignment.action.id === "open-url"}
                 <label class="fl">URL</label>
-                <input type="text" value={assignment.settings.url||''} placeholder="https://..." oninput={(e) => handleSettingChange('url', (e.target as HTMLInputElement).value)} />
+                <VarInput value={assignment.settings.url||''} placeholder="https://..." onchange={(v) => handleSettingChange('url', v)} />
               {:else if assignment.action.id === "http-request"}
                 <label class="fl">URL</label>
-                <input type="text" value={assignment.settings.url||''} placeholder="http://..." oninput={(e) => handleSettingChange('url', (e.target as HTMLInputElement).value)} />
+                <VarInput value={assignment.settings.url||''} placeholder="http://..." onchange={(v) => handleSettingChange('url', v)} />
                 <div class="mrow">{#each ["GET","POST","PUT","DELETE"] as m}<button class:active={(assignment.settings.method||'POST')===m} onclick={() => handleSettingChange('method',m)}>{m}</button>{/each}</div>
                 <label class="fl">Headers</label>
                 <textarea value={assignment.settings.headers||''} placeholder="Key: Value" oninput={(e) => handleSettingChange('headers', (e.target as HTMLTextAreaElement).value)} rows="2"></textarea>
                 <label class="fl">Body</label>
-                <textarea value={assignment.settings.body||''} placeholder={'{"key":"val"}'} oninput={(e) => handleSettingChange('body', (e.target as HTMLTextAreaElement).value)} rows="3"></textarea>
+                <VarInput value={assignment.settings.body||''} placeholder={'{"key":"val"}'} onchange={(v) => handleSettingChange('body', v)} multiline={true} rows={3} />
               {:else if assignment.action.id === "switch-scene"}
                 <label class="fl">Scene</label>
                 <div class="chips">{#each allScenes as scene}<button class="chip" class:active={assignment.settings.sceneId===scene.id} onclick={() => handleSettingChange('sceneId',scene.id)}>{scene.name}</button>{/each}</div>
