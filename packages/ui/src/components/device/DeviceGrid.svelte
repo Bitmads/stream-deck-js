@@ -69,12 +69,20 @@
     if (dragItem && !dragStarted) {
       // Was a click, not a drag — select the item
       selectStripItem(dragItem);
-    } else if (!dragItem) {
-      // Clicked empty area — deselect
-      selectStripItem(null);
     }
     dragItem = null;
     dragStarted = false;
+  }
+
+  function onStripClick(e: MouseEvent) {
+    // Deselect when clicking empty strip area (no item hit)
+    const canvas = e.target as HTMLCanvasElement;
+    const [sx, sy] = stripCoords(e, canvas);
+    for (let i = stripCfg.items.length - 1; i >= 0; i--) {
+      const it = stripCfg.items[i];
+      if (sx >= it.x && sx <= it.x + it.w && sy >= it.y && sy <= it.y + it.h) return;
+    }
+    selectStripItem(null);
   }
   let brightness = $state(80);
   let selectedEncoder = $derived(getSelectedEncoderIndex());
@@ -188,7 +196,8 @@
             onmousedown={onStripMouseDown}
             onmousemove={onStripMouseMove}
             onmouseup={onStripMouseUp}
-            onmouseleave={onStripMouseUp}
+            onmouseleave={() => { if (dragItem) { dragItem = null; dragStarted = false; } }}
+            onclick={onStripClick}
           ></canvas>
           <button class="strip-add" onclick={() => addStripItem({ id: crypto.randomUUID(), x: 10, y: 10, w: 180, h: 80, backgroundColor: "#2a2a4a", texts: [{ text: "Item", fontFamily: "sans-serif", fontSize: 16, fontWeight: "normal", fontStyle: "normal", color: "#ffffff", hAlign: "center", vAlign: "middle", anchor: "center", useAbsolutePos: false }] })} title="Add item">+</button>
         </div>
