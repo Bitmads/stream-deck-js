@@ -55,6 +55,15 @@ export async function renderKeyToDataUrl(
 
   // Layer 4: Text layers (ALWAYS on top of everything, with variable resolution)
   const texts = assignment.texts?.length ? assignment.texts : (assignment.text ? [assignment.text] : []);
+
+  // Ensure custom fonts are loaded before drawing text on canvas
+  const fontFamilies = texts
+    .filter(t => t?.text && !t.hidden && t.fontFamily && !["sans-serif", "serif", "monospace"].includes(t.fontFamily))
+    .map(t => t.fontFamily);
+  for (const family of fontFamilies) {
+    try { await document.fonts.load(`16px "${family}"`); } catch {}
+  }
+
   for (const t of texts) {
     if (t?.text && !t.hidden) {
       const resolved = { ...t, text: resolveTemplate(t.text) };
