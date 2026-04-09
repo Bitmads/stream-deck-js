@@ -16,6 +16,11 @@
   import { initVariables, resolveTemplate } from "./lib/stores/variables.svelte";
   import { registerPlugin, initPluginRegistry } from "./lib/stores/plugins.svelte";
   import { haPluginDef } from "./lib/plugins/homeassistant";
+  import { systemActionsPluginDef } from "./lib/plugins/system";
+  import { httpActionsPluginDef } from "./lib/plugins/http";
+  import { navigationPluginDef } from "./lib/plugins/navigation";
+  import { utilitiesPluginDef } from "./lib/plugins/utilities";
+  import { multiActionPluginDef } from "./lib/plugins/multi-action";
 
   let currentView = $state<"editor" | "plugins" | "profiles" | "settings">("editor");
 
@@ -45,6 +50,12 @@
     untrack(async () => {
       await initStore();
       initVariables();
+      // Register all plugins
+      registerPlugin(systemActionsPluginDef);
+      registerPlugin(httpActionsPluginDef);
+      registerPlugin(navigationPluginDef);
+      registerPlugin(utilitiesPluginDef);
+      registerPlugin(multiActionPluginDef);
       registerPlugin(haPluginDef);
       await initPluginRegistry();
       await refreshDevices();
@@ -184,12 +195,8 @@
       const resolved: Record<string, string> = {};
       for (const [k, v] of Object.entries(settings)) resolved[k] = resolveTemplate(v);
 
-      // Try plugin executor first (e.g. HA WebSocket), fall back to Rust backend
-      const handled = await executePluginAction(action.id, resolved);
-      if (!handled && action.id !== "none") {
-        const hasConfig = resolved.command || resolved.target || resolved.url || resolved.key;
-        if (hasConfig) await invoke("execute_action", { actionType: action.id, settings: JSON.stringify(resolved) });
-      }
+      // Execute via plugin executor
+      await executePluginAction(action.id, resolved);
     } catch (e) {
       console.error("Action execution failed:", e);
     }

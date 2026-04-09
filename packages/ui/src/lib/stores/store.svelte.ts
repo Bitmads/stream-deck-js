@@ -94,20 +94,7 @@ const NONE_ACTION: ActionDef = { id: "none", label: "None", icon: "", color: "#3
 const MAX_UNDO = 50;
 const TEMPLATE_RE = /\{\{([^}]+)\}\}/g;
 
-/** Built-in action types. Plugins can register more via registerActionType(). */
-const BUILTIN_ACTIONS: ActionDef[] = [
-  { id: "hotkey", label: "Hotkey", icon: "⌨", color: "#e74c3c" },
-  { id: "launch", label: "Launch App", icon: "🚀", color: "#3498db" },
-  { id: "command", label: "Shell Command", icon: ">_", color: "#2ecc71" },
-  { id: "open-url", label: "Open URL", icon: "🔗", color: "#9b59b6" },
-  { id: "http-request", label: "HTTP Request", icon: "↗", color: "#00bcd4" },
-  { id: "switch-scene", label: "Switch Scene", icon: "⇄", color: "#ff9800" },
-  { id: "back", label: "Back (Previous Scene)", icon: "←", color: "#607d8b" },
-  { id: "multi-action", label: "Multi-Action", icon: "▶▶", color: "#e67e22" },
-  { id: "folder", label: "Folder", icon: "📁", color: "#1abc9c" },
-  { id: "timer", label: "Timer", icon: "⏱", color: "#f39c12" },
-  { id: "counter", label: "Counter", icon: "#", color: "#e91e63" },
-];
+/** All action types are now registered by plugins via registerActionType(). */
 
 const pluginActions: ActionDef[] = [];
 const pluginExecutors: Record<string, (settings: Record<string, string>) => Promise<void>> = {};
@@ -134,8 +121,8 @@ export async function executePluginAction(actionId: string, settings: Record<str
   return false;
 }
 
-/** All action types: built-in + plugin-registered. */
-export const ACTION_TYPES = { get all() { return [...BUILTIN_ACTIONS, ...pluginActions]; } };
+/** All registered action types (from plugins). */
+export const ACTION_TYPES = { get all() { return [...pluginActions]; } };
 
 // ─── The Store ───────────────────────────────────────────────
 
