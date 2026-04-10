@@ -13,6 +13,7 @@
   let previewUrl = $state<string | null>(null);
   let renderVersion = 0;
   let deviceSyncTimer: number | undefined;
+  let hadAssignment = false;
 
   // Build a string of resolved variable values used by this key — changes trigger re-render
   let usedVarValues = $derived(() => {
@@ -32,6 +33,7 @@
     void usedVarValues(); // track only variables this key uses
     const version = ++renderVersion;
     if (currentA) {
+      hadAssignment = true;
       renderKeyToDataUrl(currentA, size).then((url) => {
         if (version === renderVersion) {
           previewUrl = url;
@@ -47,7 +49,11 @@
     } else {
       previewUrl = null;
       clearTimeout(deviceSyncTimer);
-      invoke("clear_key", { keyIndex }).catch(() => {});
+      // Only clear the device if the key WAS previously assigned (user cleared it).
+      // Don't clear on initial mount when scenes haven't loaded yet.
+      if (hadAssignment) {
+        invoke("clear_key", { keyIndex }).catch(() => {});
+      }
     }
   });
 
