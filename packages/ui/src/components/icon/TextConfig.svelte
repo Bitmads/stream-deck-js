@@ -155,10 +155,17 @@
   .btn-group button.active { background: var(--accent); color: white; border-color: var(--accent); }
 
   .field select {
-    padding: 6px 8px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding: 6px 24px 6px 8px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: var(--bg-primary);
+    background-color: var(--bg-primary);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236a6a80' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+    background-size: 14px;
     color: var(--text-primary);
     font-size: 12px;
     outline: none;
@@ -166,6 +173,10 @@
     cursor: pointer;
   }
   .field select:focus { border-color: var(--accent); }
+  .field select option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
 
   .field input[type="checkbox"] { margin-right: 4px; }
 </style>
