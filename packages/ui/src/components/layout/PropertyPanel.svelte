@@ -135,7 +135,7 @@
 
   {#if stripItemId && stripItem()}
     <!-- ═══ STRIP ITEM ═══ -->
-    {@const si = stripItem()}
+    {@const si = stripItem()!}
     <div class="pp-tabs">
       <button class:active={activeTab === "appearance"} onclick={() => { activeTab = "appearance"; gesturePickerOpen = null; }}>Look</button>
       <button class:active={activeTab === "icons"} onclick={() => { activeTab = "icons"; gesturePickerOpen = null; }}>Icons</button>
@@ -201,9 +201,9 @@
 
       {:else if activeTab === "action"}
         {#each [
-          { key: "tap", label: "On Tap", actionField: "tapAction", settingsField: "tapSettings", hint: "Passes ratio (0-1) based on tap x-position within item." },
-          { key: "longpress", label: "On Long Press", actionField: "longPressAction", settingsField: "longPressSettings", hint: "" },
-          { key: "swipe", label: "On Swipe", actionField: "swipeAction", settingsField: "swipeSettings", hint: "Passes from_ratio, to_ratio, direction, distance." }
+          { key: "tap" as const, label: "On Tap", actionField: "tapAction", settingsField: "tapSettings", hint: "Passes ratio (0-1) based on tap x-position within item." },
+          { key: "longpress" as const, label: "On Long Press", actionField: "longPressAction", settingsField: "longPressSettings", hint: "" },
+          { key: "swipe" as const, label: "On Swipe", actionField: "swipeAction", settingsField: "swipeSettings", hint: "Passes from_ratio, to_ratio, direction, distance." }
         ] as gesture}
           {@const currentAction = (si as any)[gesture.actionField]}
           <label class="fl">{gesture.label}</label>
