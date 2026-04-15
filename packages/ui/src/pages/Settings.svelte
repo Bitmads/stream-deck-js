@@ -47,7 +47,18 @@
   }
 
   async function toggleStartOnBoot() {
-    startOnBoot = !startOnBoot;
+    const turningOn = !startOnBoot;
+    // Dev builds can't autostart because they need Vite running at localhost:5173.
+    // Detect dev mode via Vite's import.meta.env.DEV flag.
+    if (turningOn && import.meta.env.DEV) {
+      const ok = confirm(
+        "Autostart won't work from a dev build — the app can't connect to Vite on boot.\n\n" +
+        "Run `cargo tauri build` and install the release binary, then enable autostart from there.\n\n" +
+        "Enable anyway?"
+      );
+      if (!ok) return;
+    }
+    startOnBoot = turningOn;
     if (startOnBoot) {
       await enable();
     } else {
