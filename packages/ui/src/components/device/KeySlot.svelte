@@ -4,7 +4,7 @@
   import { renderKeyToDataUrl } from "../../lib/utils/render-key";
   import { getVariable, extractVariableNames } from "../../lib/stores/variables.svelte";
 
-  let { keyIndex, size = 72 }: { keyIndex: number; size?: number } = $props();
+  let { keyIndex, size = 72, serial = "" }: { keyIndex: number; size?: number; serial?: string } = $props();
 
   let isSelected = $derived(getSelectedKeyIndex() === keyIndex);
   let a = $derived(getKeyAssignment(keyIndex));
@@ -41,7 +41,7 @@
           clearTimeout(deviceSyncTimer);
           deviceSyncTimer = window.setTimeout(() => {
             if (renderVersion === version) {
-              invoke("send_rendered_image", { keyIndex, imageData: url }).catch(() => {});
+              invoke("send_rendered_image", { serial, keyIndex, imageData: url }).catch(() => {});
             }
           }, 150);
         }
@@ -52,7 +52,7 @@
       // Only clear the device if the key WAS previously assigned (user cleared it).
       // Don't clear on initial mount when scenes haven't loaded yet.
       if (hadAssignment) {
-        invoke("clear_key", { keyIndex }).catch(() => {});
+        invoke("clear_key", { serial, keyIndex }).catch(() => {});
       }
     }
   });

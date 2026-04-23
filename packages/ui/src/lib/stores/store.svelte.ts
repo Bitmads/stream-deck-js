@@ -885,7 +885,10 @@ class AppStore {
       }
 
       const dataUrl = canvas.toDataURL("image/jpeg", 0.90);
-      invoke("send_lcd_image", { x: 0, y: 0, w: 800, h: 100, imageData: dataUrl }).catch(() => {});
+      const serial = this.currentSerial;
+      if (serial) {
+        invoke("send_lcd_image", { serial, x: 0, y: 0, w: 800, h: 100, imageData: dataUrl }).catch(() => {});
+      }
     }, 100);
   }
 

@@ -183,7 +183,7 @@
         style="grid-template-columns: repeat({columns}, {keySize}px); grid-template-rows: repeat({rows}, {keySize}px);"
       >
         {#each Array(totalKeys) as _, i}
-          <KeySlot keyIndex={i} size={keySize} />
+          <KeySlot keyIndex={i} size={keySize} serial={device?.serial || ""} />
         {/each}
       </div>
 
