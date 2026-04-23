@@ -180,12 +180,19 @@ class AppStore {
     this.deviceError = null;
     try {
       const newDevices = await invoke<DeviceInfo[]>("list_devices");
+      const prevCount = this.devices.length;
       const changed = newDevices.length !== this.devices.length ||
         newDevices.some((d, i) => d.serial !== this.devices[i]?.serial);
       if (changed) this.devices = newDevices;
+
       if (this.devices.length > 0 && (!this.selectedDevice || !this.devices.find(d => d.serial === this.selectedDevice?.serial))) {
         await this.selectDevice(this.devices[0]);
+      } else if (this.selectedDevice && changed && this.devices.find(d => d.serial === this.selectedDevice?.serial)) {
+        // Device list changed but our device is still there — re-open to refresh HID handle
+        // (handles suspend/resume where the handle goes stale)
+        await invoke("open_device", { serial: this.selectedDevice.serial }).catch(() => {});
       }
+
       if (this.devices.length === 0 && this.selectedDevice) this.selectedDevice = null;
     } catch (e) { this.deviceError = String(e); }
     finally { this.deviceLoading = false; }
