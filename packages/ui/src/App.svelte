@@ -86,7 +86,7 @@
               selectEncoder(e.index);
               handleEncoderPress(e.index);
             } else {
-              executeEncoderPressForDevice(eventSerial, e.index);
+              store.handleEncoderPressForDevice(eventSerial, e.index);
             }
           }
           break;
@@ -94,7 +94,7 @@
           if (isActiveDevice) {
             handleEncoderRotate(e.index, e.delta);
           } else {
-            executeEncoderRotateForDevice(eventSerial, e.index, e.delta);
+            store.handleEncoderRotateForDevice(eventSerial, e.index, e.delta);
           }
           break;
         case "lcd_short_press":
@@ -203,22 +203,6 @@
     }
   }
 
-  async function executeEncoderPressForDevice(serial: string, index: number) {
-    const cfg = store.getEncoderConfigForDevice(serial, index);
-    if (!cfg || cfg.pressAction.id === "none") return;
-    const resolved: Record<string, string> = {};
-    for (const [k, v] of Object.entries(cfg.pressSettings)) resolved[k] = resolveTemplate(v);
-    await executePluginAction(cfg.pressAction.id, resolved);
-  }
-
-  async function executeEncoderRotateForDevice(serial: string, index: number, delta: number) {
-    const cfg = store.getEncoderConfigForDevice(serial, index);
-    if (!cfg || cfg.rotateAction.id === "none") return;
-    const resolved: Record<string, string> = {};
-    for (const [k, v] of Object.entries(cfg.rotateSettings)) resolved[k] = resolveTemplate(v);
-    resolved.delta = String(delta);
-    await executePluginAction(cfg.rotateAction.id, resolved);
-  }
 </script>
 
 <div class="app-layout">

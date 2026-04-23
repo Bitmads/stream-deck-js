@@ -555,6 +555,45 @@ class AppStore {
     return sceneId ? config.scenes[sceneId]?.encoders?.[String(index)] : undefined;
   }
 
+  handleEncoderRotateForDevice(serial: string, index: number, delta: number) {
+    const cfg = this.getEncoderConfigForDevice(serial, index);
+    if (!cfg || cfg.rotateAction.id === "none") return;
+
+    const min = this.resolveNumber(cfg.min, 0);
+    const max = this.resolveNumber(cfg.max, 100);
+    const curVal = this.resolveNumber(cfg.value, 0);
+    const newVal = Math.max(min, Math.min(max, curVal + delta * cfg.step));
+
+    const varName = this.extractVarName(cfg.value);
+    if (varName) {
+      this.setVariable(varName, String(newVal));
+    }
+
+    const k = `${serial}:${index}`;
+    clearTimeout(this.encoderActionTimers[k]);
+    this.encoderActionTimers[k] = window.setTimeout(() => {
+      const resolved = this.resolveSettings(cfg.rotateSettings);
+      resolved.value = String(varName ? this.resolveNumber(cfg.value, 0) : newVal);
+      resolved.delta = String(delta);
+      resolved.min = String(min);
+      resolved.max = String(max);
+      this.executeAction(cfg.rotateAction.id, resolved);
+    }, 30);
+  }
+
+  handleEncoderPressForDevice(serial: string, index: number) {
+    const cfg = this.getEncoderConfigForDevice(serial, index);
+    if (!cfg || cfg.pressAction.id === "none") return;
+    const min = this.resolveNumber(cfg.min, 0);
+    const max = this.resolveNumber(cfg.max, 100);
+    const value = this.resolveNumber(cfg.value, 0);
+    const resolved = this.resolveSettings(cfg.pressSettings);
+    resolved.value = String(value);
+    resolved.min = String(min);
+    resolved.max = String(max);
+    this.executeAction(cfg.pressAction.id, resolved);
+  }
+
   assignAction(keyIndex: number, action: ActionDef) {
     const scene = this.activeScene;
     if (!scene) return;
