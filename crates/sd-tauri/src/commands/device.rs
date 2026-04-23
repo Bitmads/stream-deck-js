@@ -126,6 +126,7 @@ pub fn start_key_listener(
                         let was = keys.get(*index as usize).copied().unwrap_or(false);
                         if *pressed != was {
                             if let Some(s) = keys.get_mut(*index as usize) { *s = *pressed; }
+                            tracing::info!("[KEY] serial={} index={} pressed={}", serial, index, pressed);
                             let _ = app.emit("device-event", event);
                         }
                     }

@@ -76,21 +76,26 @@
       switch (e.type) {
         case "key":
           if (e.pressed) {
-            console.log(`[KEY] serial=${eventSerial} index=${e.index} active=${store.currentSerial} isActive=${isActiveDevice} profileDevices=${Object.keys(store.profileDevices)}`);
-            const dbgAssign = store.getKeyAssignmentForDevice(eventSerial, e.index);
-            console.log(`[KEY] assignment=`, dbgAssign?.action?.id, dbgAssign?.settings);
             if (isActiveDevice) selectKey(e.index);
             executeKeyActionForDevice(eventSerial, e.index);
           }
           break;
         case "encoder_press":
           if (e.pressed) {
-            if (isActiveDevice) selectEncoder(e.index);
-            if (isActiveDevice) handleEncoderPress(e.index);
+            if (isActiveDevice) {
+              selectEncoder(e.index);
+              handleEncoderPress(e.index);
+            } else {
+              executeEncoderPressForDevice(eventSerial, e.index);
+            }
           }
           break;
         case "encoder_rotate":
-          if (isActiveDevice) handleEncoderRotate(e.index, e.delta);
+          if (isActiveDevice) {
+            handleEncoderRotate(e.index, e.delta);
+          } else {
+            executeEncoderRotateForDevice(eventSerial, e.index, e.delta);
+          }
           break;
         case "lcd_short_press":
           if (isActiveDevice) handleStripTap(e.x, e.y);
@@ -196,6 +201,23 @@
     } catch (e) {
       console.error("Action execution failed:", e);
     }
+  }
+
+  async function executeEncoderPressForDevice(serial: string, index: number) {
+    const cfg = store.getEncoderConfigForDevice(serial, index);
+    if (!cfg || cfg.pressAction.id === "none") return;
+    const resolved: Record<string, string> = {};
+    for (const [k, v] of Object.entries(cfg.pressSettings)) resolved[k] = resolveTemplate(v);
+    await executePluginAction(cfg.pressAction.id, resolved);
+  }
+
+  async function executeEncoderRotateForDevice(serial: string, index: number, delta: number) {
+    const cfg = store.getEncoderConfigForDevice(serial, index);
+    if (!cfg || cfg.rotateAction.id === "none") return;
+    const resolved: Record<string, string> = {};
+    for (const [k, v] of Object.entries(cfg.rotateSettings)) resolved[k] = resolveTemplate(v);
+    resolved.delta = String(delta);
+    await executePluginAction(cfg.rotateAction.id, resolved);
   }
 </script>
 
