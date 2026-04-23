@@ -76,6 +76,9 @@
       switch (e.type) {
         case "key":
           if (e.pressed) {
+            console.log(`[KEY] serial=${eventSerial} index=${e.index} active=${store.currentSerial} isActive=${isActiveDevice} profileDevices=${Object.keys(store.profileDevices)}`);
+            const dbgAssign = store.getKeyAssignmentForDevice(eventSerial, e.index);
+            console.log(`[KEY] assignment=`, dbgAssign?.action?.id, dbgAssign?.settings);
             if (isActiveDevice) selectKey(e.index);
             executeKeyActionForDevice(eventSerial, e.index);
           }
