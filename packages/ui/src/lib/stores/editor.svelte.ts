@@ -32,6 +32,8 @@ export function selectEncoder(index: number | null) { store.selectEncoder(index)
 
 // Key methods
 export function getKeyAssignment(index: number) { return store.getKeyAssignment(index); }
+export function getKeyAssignmentForDevice(serial: string, index: number) { return store.getKeyAssignmentForDevice(serial, index); }
+export function getEncoderConfigForDevice(serial: string, index: number) { return store.getEncoderConfigForDevice(serial, index); }
 export function assignAction(keyIndex: number, action: Parameters<typeof store.assignAction>[1]) { store.assignAction(keyIndex, action); }
 export function swapKeys(from: number, to: number) { store.swapKeys(from, to); }
 export function updateKeySetting(keyIndex: number, key: string, value: string) { store.updateKeySetting(keyIndex, key, value); }

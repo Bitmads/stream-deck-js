@@ -8,11 +8,13 @@
   import StatusBar from "./components/layout/StatusBar.svelte";
   import { refreshDevices } from "./lib/stores/devices.svelte";
   import {
-    selectKey, selectEncoder, getKeyAssignment, pushScene, popScene, switchScene,
+    selectKey, selectEncoder, getKeyAssignment, getKeyAssignmentForDevice,
+    pushScene, popScene, switchScene,
     getScenes, getActiveSceneId, undo, redo, handleTimerPress, handleCounterPress,
     handleEncoderRotate, handleEncoderPress, handleStripTap, handleStripLongPress, handleStripSwipe,
     initStore, executePluginAction,
   } from "./lib/stores/editor.svelte";
+  import { store } from "./lib/stores/editor.svelte";
   import { initVariables, resolveTemplate } from "./lib/stores/variables.svelte";
   import { registerPlugin, initPluginRegistry } from "./lib/stores/plugins.svelte";
   import { haPluginDef } from "./lib/plugins/homeassistant";
@@ -64,37 +66,37 @@
     return () => clearInterval(interval);
   });
 
-  // Device input events (keys, encoders, LCD touch)
+  // Device input events (keys, encoders, LCD touch) — handles ALL devices
   $effect(() => {
     const unlisten = listen<any>("device-event", (event) => {
       const e = event.payload;
-      if (e.type === "lcd_short_press" || e.type === "lcd_swipe" || e.type === "lcd_long_press") {
-        console.log(`[HID EVENT] ${e.type}`, e);
-      }
+      const eventSerial = e.serial || "";
+      const isActiveDevice = eventSerial === store.currentSerial;
+
       switch (e.type) {
         case "key":
           if (e.pressed) {
-            selectKey(e.index);
-            executeKeyAction(e.index);
+            if (isActiveDevice) selectKey(e.index);
+            executeKeyActionForDevice(eventSerial, e.index);
           }
           break;
         case "encoder_press":
           if (e.pressed) {
-            selectEncoder(e.index);
-            handleEncoderPress(e.index);
+            if (isActiveDevice) selectEncoder(e.index);
+            if (isActiveDevice) handleEncoderPress(e.index);
           }
           break;
         case "encoder_rotate":
-          handleEncoderRotate(e.index, e.delta);
+          if (isActiveDevice) handleEncoderRotate(e.index, e.delta);
           break;
         case "lcd_short_press":
-          handleStripTap(e.x, e.y);
+          if (isActiveDevice) handleStripTap(e.x, e.y);
           break;
         case "lcd_long_press":
-          handleStripLongPress(e.x, e.y);
+          if (isActiveDevice) handleStripLongPress(e.x, e.y);
           break;
         case "lcd_swipe":
-          handleStripSwipe(e.from_x, e.from_y, e.to_x, e.to_y);
+          if (isActiveDevice) handleStripSwipe(e.from_x, e.from_y, e.to_x, e.to_y);
           break;
       }
     });
@@ -167,35 +169,26 @@
     return value.toLowerCase().includes(pattern.toLowerCase());
   }
 
-  async function executeKeyAction(keyIndex: number) {
-    const assignment = getKeyAssignment(keyIndex);
+  async function executeKeyActionForDevice(serial: string, keyIndex: number) {
+    const assignment = getKeyAssignmentForDevice(serial, keyIndex);
     if (!assignment) return;
 
     const { action, settings } = assignment;
 
-    if (action.id === "switch-scene" && settings.sceneId) {
-      settings.mode === "switch" ? switchScene(settings.sceneId) : pushScene(settings.sceneId);
-      return;
-    }
-    if (action.id === "back") {
-      popScene();
-      return;
-    }
-    if (action.id === "timer") {
-      handleTimerPress(keyIndex);
-      return;
-    }
-    if (action.id === "counter") {
-      handleCounterPress(keyIndex);
-      return;
+    // Scene navigation only applies to the active device
+    if (serial === store.currentSerial) {
+      if (action.id === "switch-scene" && settings.sceneId) {
+        settings.mode === "switch" ? switchScene(settings.sceneId) : pushScene(settings.sceneId);
+        return;
+      }
+      if (action.id === "back") { popScene(); return; }
+      if (action.id === "timer") { handleTimerPress(keyIndex); return; }
+      if (action.id === "counter") { handleCounterPress(keyIndex); return; }
     }
 
     try {
-      // Resolve {{variables}} in all setting values
       const resolved: Record<string, string> = {};
       for (const [k, v] of Object.entries(settings)) resolved[k] = resolveTemplate(v);
-
-      // Execute via plugin executor
       await executePluginAction(action.id, resolved);
     } catch (e) {
       console.error("Action execution failed:", e);

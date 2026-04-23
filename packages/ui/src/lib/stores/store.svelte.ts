@@ -539,6 +539,22 @@ class AppStore {
     return this.activeScene?.keys[String(index)];
   }
 
+  getKeyAssignmentForDevice(serial: string, index: number): KeyAssignment | undefined {
+    if (serial === this.currentSerial) return this.activeScene?.keys[String(index)];
+    const config = this.profileDevices[serial];
+    if (!config) return undefined;
+    const sceneId = config.activeSceneId || Object.keys(config.scenes)[0];
+    return sceneId ? config.scenes[sceneId]?.keys[String(index)] : undefined;
+  }
+
+  getEncoderConfigForDevice(serial: string, index: number): EncoderConfig | undefined {
+    if (serial === this.currentSerial) return this.getEncoderConfig(index);
+    const config = this.profileDevices[serial];
+    if (!config) return undefined;
+    const sceneId = config.activeSceneId || Object.keys(config.scenes)[0];
+    return sceneId ? config.scenes[sceneId]?.encoders?.[String(index)] : undefined;
+  }
+
   assignAction(keyIndex: number, action: ActionDef) {
     const scene = this.activeScene;
     if (!scene) return;
