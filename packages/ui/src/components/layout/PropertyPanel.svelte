@@ -320,9 +320,9 @@
           {/if}
 
         <!-- Key action (non-encoder) -->
-        {:else if assignment !== undefined}
+        {:else if selectedKey !== null}
           <button class="action-sel" onclick={() => actionPickerOpen = !actionPickerOpen}>
-            {#if assignment.action.id !== "none"}
+            {#if assignment && assignment.action.id !== "none"}
               <span style="color:{assignment.action.color};">{assignment.action.icon}</span> {assignment.action.label}
             {:else}
               <span class="sel-none">Select action...</span>
@@ -342,7 +342,7 @@
             </div>
           {/if}
 
-          {#if assignment.action.id !== "none" && !actionPickerOpen}
+          {#if assignment && assignment.action.id !== "none" && !actionPickerOpen}
             <div class="act-settings">
               {#if assignment.action.id === "command"}
                 <label class="fl">Command</label>
