@@ -334,7 +334,7 @@
             <input class="search-in" type="text" bind:value={actionQuery} placeholder="Search..." />
             <div class="action-drop">
               {#each actionResults as action}
-                <button class:active={assignment.action.id === action.id} onclick={() => handleAssignAction(action)}>
+                <button class:active={assignment?.action.id === action.id} onclick={() => handleAssignAction(action)}>
                   <span style="color:{action.color};">{action.icon}</span> {action.label}
                   <span class="fav" class:active={isFavorite(action.id)} onclick={(e) => { e.stopPropagation(); toggleFavorite(action.id); }}>{isFavorite(action.id) ? '★' : '☆'}</span>
                 </button>
