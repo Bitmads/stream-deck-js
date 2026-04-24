@@ -96,21 +96,20 @@ const TEMPLATE_RE = /\{\{([^}]+)\}\}/g;
 
 /** All action types are now registered by plugins via registerActionType(). */
 
-const pluginActions: ActionDef[] = [];
+let pluginActions = $state<ActionDef[]>([]);
 const pluginExecutors: Record<string, (settings: Record<string, string>) => Promise<void>> = {};
 
 /** Plugins call this to register new action types. */
 export function registerActionType(action: ActionDef, executor?: (settings: Record<string, string>) => Promise<void>) {
   if (!pluginActions.find(a => a.id === action.id)) {
-    pluginActions.push(action);
+    pluginActions = [...pluginActions, action];
   }
   if (executor) pluginExecutors[action.id] = executor;
 }
 
 /** Remove a plugin-registered action type from the picker. */
 export function unregisterActionType(actionId: string) {
-  const idx = pluginActions.findIndex(a => a.id === actionId);
-  if (idx >= 0) pluginActions.splice(idx, 1);
+  pluginActions = pluginActions.filter(a => a.id !== actionId);
   delete pluginExecutors[actionId];
 }
 
@@ -122,7 +121,7 @@ export async function executePluginAction(actionId: string, settings: Record<str
 }
 
 /** All registered action types (from plugins). */
-export const ACTION_TYPES = { get all() { return [...pluginActions]; } };
+export const ACTION_TYPES = { get all() { return pluginActions; } };
 
 // ─── The Store ───────────────────────────────────────────────
 
