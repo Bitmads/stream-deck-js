@@ -21,7 +21,7 @@ export interface IconConfig {
 
 export interface KeyAssignment {
   action: ActionDef; settings: Record<string, string>; backgroundColor: string;
-  imagePath?: string; imageDataUrl?: string;
+  imagePath?: string; imageDataUrl?: string; imageUrl?: string;
   text?: TextConfig; texts?: TextConfig[]; icon?: IconConfig; pinned?: boolean;
 }
 
@@ -47,6 +47,7 @@ export interface StripItem {
   // Visual (same concepts as KeyAssignment)
   backgroundColor?: string;  // {{$var|rgb}} supported
   imageDataUrl?: string;
+  imageUrl?: string;
   imageFit?: "fill" | "cover" | "contain" | "none";
   icon?: IconConfig;
   texts?: TextConfig[];
@@ -1026,10 +1027,12 @@ class AppStore {
       }
     }
 
-    // Image
-    if (item.imageDataUrl) {
+    // Image (data URL or remote URL with variable support)
+    const resolvedImgUrl = item.imageUrl ? this.resolveTemplate(item.imageUrl) : "";
+    const imgSrc = item.imageDataUrl || (resolvedImgUrl && !resolvedImgUrl.includes("{{") ? resolvedImgUrl : "");
+    if (imgSrc) {
       try {
-        const img = await this.loadImg(item.imageDataUrl);
+        const img = await this.loadImg(imgSrc);
         const fit = item.imageFit || "fill";
         if (fit === "fill") {
           ctx.drawImage(img, x, y, w, h);
@@ -1086,12 +1089,20 @@ class AppStore {
     ctx.restore(); // end clip
   }
 
-  private loadImg(src: string): Promise<HTMLImageElement> {
+  private async loadImg(src: string): Promise<HTMLImageElement> {
+    let url = src;
+    if (src.startsWith("http://") || src.startsWith("https://")) {
+      try {
+        const resp = await fetch(src);
+        const blob = await resp.blob();
+        url = URL.createObjectURL(blob);
+      } catch {}
+    }
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
+      img.onload = () => { if (url !== src) URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = (e) => { if (url !== src) URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
     });
   }
 

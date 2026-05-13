@@ -13,7 +13,7 @@
   import HAEntityPicker from "../input/HAEntityPicker.svelte";
   import { ha } from "../../lib/plugins/homeassistant";
   import { resolveTemplate } from "../../lib/stores/variables.svelte";
-  import { ACTION_TYPES } from "../../lib/stores/store.svelte";
+  import { ACTION_TYPES, store } from "../../lib/stores/store.svelte";
   import type { MultiActionStep } from "../../lib/plugins/multi-action";
   import VarInput from "../input/VarInput.svelte";
 
@@ -172,6 +172,8 @@
         {:else}
           <label class="sm-btn">Upload<input type="file" accept="image/*" onchange={(e) => { const f=(e.target as HTMLInputElement).files?.[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{if(typeof r.result==="string") updateStripItem(si.id,{imageDataUrl:r.result})}; r.readAsDataURL(f); }} hidden /></label>
         {/if}
+        <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
+        <VarInput value={si.imageUrl || ''} placeholder={"https://... or {{$ha.media_player...}}"} onchange={(v) => updateStripItem(si.id, { imageUrl: v || undefined })} />
         {#if si.icon}
           <label class="fl">Icon</label>
           <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={si.icon.viewBox} width="32" height="32" fill="none" stroke={si.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html si.icon.svgBody}</svg></button><span class="icon-name">{si.icon.iconName}</span><button class="sm-btn danger" onclick={() => updateStripItem(si.id, { icon: undefined })}>Remove</button></div>
@@ -443,6 +445,8 @@
         {#if assignment?.imageDataUrl}
           <div class="img-row"><img src={assignment.imageDataUrl} alt="" /><label class="sm-btn">Change<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyImage(selectedKey); }}>Remove</button></div>
         {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
+        <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
+        <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
         {#if assignment?.icon}
           <label class="fl">Icon</label>
           <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={assignment.icon.viewBox} width="32" height="32" fill="none" stroke={assignment.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html assignment.icon.svgBody}</svg></button><span class="icon-name">{assignment.icon.iconName}</span><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button></div>
@@ -565,6 +569,7 @@
   .add-text-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; border: 1px dashed var(--border); }
   .add-text-btn:hover { color: var(--accent); border-color: var(--accent); }
   .hint-text { font-size: 9px; color: var(--text-muted); margin-top: 6px; display: block; line-height: 1.4; }
+  .hint-inline { font-size: 9px; color: var(--text-muted); text-transform: none; letter-spacing: 0; opacity: 0.6; }
 
   .ma-steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
   .ma-step { background: var(--bg-primary); border-radius: var(--radius-sm); padding: 8px; border: 1px solid var(--border); }

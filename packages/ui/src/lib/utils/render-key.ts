@@ -24,14 +24,14 @@ export async function renderKeyToDataUrl(
   ctx.fillStyle = bgColor.startsWith("#") || bgColor.startsWith("rgb") ? bgColor : "#000000";
   ctx.fillRect(0, 0, w, h);
 
-  // Layer 2: Background image
-  if (assignment.imageDataUrl) {
+  // Layer 2: Background image (data URL or remote URL with variable support)
+  const resolvedImgUrl = assignment.imageUrl ? resolveTemplate(assignment.imageUrl) : "";
+  const imgSrc = assignment.imageDataUrl || (resolvedImgUrl && !resolvedImgUrl.includes("{{") ? resolvedImgUrl : "");
+  if (imgSrc) {
     try {
-      const img = await loadImage(assignment.imageDataUrl);
+      const img = await loadImage(imgSrc);
       ctx.drawImage(img, 0, 0, w, h);
-    } catch (e) {
-      console.error("Failed to load background image:", e);
-    }
+    } catch {}
   }
 
   // Layer 3: SVG icon (centered)
@@ -187,11 +187,28 @@ function drawText(
   }
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  let url = src;
+  // Fetch remote URLs as blob to avoid CORS canvas tainting
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    try {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      url = URL.createObjectURL(blob);
+    } catch {
+      // Fall back to direct src
+    }
+  }
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
-    img.src = src;
+    img.onload = () => {
+      if (url !== src) URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = (e) => {
+      if (url !== src) URL.revokeObjectURL(url);
+      reject(e);
+    };
+    img.src = url;
   });
 }

@@ -113,6 +113,17 @@
   // Include varRevision so strip re-renders when variables change
   let stripCfg = $derived({ ...getStripConfig(), _rev: store.revision, _varRev: store.varRevision, _sel: store.selectedStripItemId });
 
+  const imgCache: Record<string, string> = {};
+  function fetchImgUrl(src: string, redraw: () => void): string {
+    if (!src.startsWith("http")) return src;
+    if (imgCache[src]) return imgCache[src];
+    fetch(src).then(r => r.blob()).then(b => {
+      imgCache[src] = URL.createObjectURL(b);
+      redraw();
+    }).catch(() => {});
+    return "";
+  }
+
   function renderStrip(canvas: HTMLCanvasElement, cfg: any) {
     function draw() {
       const ctx = canvas.getContext("2d")!;
@@ -146,9 +157,12 @@
             ctx.beginPath(); ctx.roundRect(item.x + 4, item.y + item.h - bh - 4, (item.w - 8) * ratio, bh, 3); ctx.fill();
           }
         }
-        // Image
-        if (item.imageDataUrl) {
-          const img = new Image(); img.src = item.imageDataUrl;
+        // Image (data URL or remote URL)
+        const resolvedUrl = item.imageUrl ? store.resolveTemplate(item.imageUrl) : "";
+        const rawImgSrc = item.imageDataUrl || (resolvedUrl && !resolvedUrl.includes("{{") ? resolvedUrl : "");
+        const imgSrc = rawImgSrc ? fetchImgUrl(rawImgSrc, draw) : "";
+        if (imgSrc) {
+          const img = new Image(); img.src = imgSrc;
           if (img.complete) {
             const fit = item.imageFit || "fill";
             const ix = item.x, iy = item.y, iw = item.w, ih = item.h;
