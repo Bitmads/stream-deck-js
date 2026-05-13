@@ -13,22 +13,26 @@
 @font-face { font-family: 'Source Sans 3'; font-weight: 700; font-style: normal; src: url('/fonts/sourcesans3-700.woff2') format('woff2'); }
 
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --bg-surface: #202040;
-  --text-primary: #e8e8e8;
-  --text-secondary: #a0a0b0;
-  --text-muted: #6a6a80;
-  --accent: #0078ff;
-  --accent-hover: #0060d0;
-  --danger: #e74c3c;
-  --success: #2ecc71;
-  --warning: #f39c12;
-  --border: #2a2a4a;
+  --bg-primary: #111120;
+  --bg-secondary: #171728;
+  --bg-tertiary: #1e1e34;
+  --bg-surface: #21213a;
+  --text-primary: #e4e4f0;
+  --text-secondary: #9696b0;
+  --text-muted: #585874;
+  --accent: #3e63dd;
+  --accent-hover: #5373e7;
+  --accent-subtle: rgba(62, 99, 221, 0.12);
+  --danger: #ef5350;
+  --success: #4caf7c;
+  --warning: #f5a623;
+  --border: #282845;
+  --border-light: #33335a;
   --radius: 8px;
-  --radius-sm: 4px;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --radius-sm: 5px;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  --item-gap: 10px;
+  --input-h: 34px;
 }
 
 * {
@@ -44,9 +48,9 @@ html, body, #app {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
     Ubuntu, Cantarell, sans-serif;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text-primary);
   background-color: var(--bg-primary);
   -webkit-font-smoothing: antialiased;
