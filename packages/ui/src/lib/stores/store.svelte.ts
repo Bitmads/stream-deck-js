@@ -21,7 +21,7 @@ export interface IconConfig {
 
 export interface KeyAssignment {
   action: ActionDef; settings: Record<string, string>; backgroundColor: string;
-  imagePath?: string; imageDataUrl?: string; imageUrl?: string;
+  imagePath?: string; imageDataUrl?: string; imageUrl?: string; imageFit?: "fill" | "cover" | "contain" | "none";
   text?: TextConfig; texts?: TextConfig[]; icon?: IconConfig; pinned?: boolean;
 }
 

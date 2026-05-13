@@ -447,6 +447,19 @@
         {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
         <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
         <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
+        {#if assignment?.imageDataUrl || assignment?.imageUrl}
+          <label class="fl">Fit</label>
+          <div class="mrow">
+            {#each [
+              { v: "fill", l: "Stretch" },
+              { v: "cover", l: "Cover" },
+              { v: "contain", l: "Fit" },
+              { v: "none", l: "Original" },
+            ] as opt}
+              <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v; store.revision++; } }}>{opt.l}</button>
+            {/each}
+          </div>
+        {/if}
         {#if assignment?.icon}
           <label class="fl">Icon</label>
           <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={assignment.icon.viewBox} width="32" height="32" fill="none" stroke={assignment.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html assignment.icon.svgBody}</svg></button><span class="icon-name">{assignment.icon.iconName}</span><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button></div>

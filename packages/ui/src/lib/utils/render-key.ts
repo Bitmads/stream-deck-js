@@ -30,7 +30,20 @@ export async function renderKeyToDataUrl(
   if (imgSrc) {
     try {
       const img = await loadImage(imgSrc);
-      ctx.drawImage(img, 0, 0, w, h);
+      const fit = assignment.imageFit || "fill";
+      if (fit === "fill") {
+        ctx.drawImage(img, 0, 0, w, h);
+      } else if (fit === "cover") {
+        const sc = Math.max(w / img.width, h / img.height);
+        const sw = w / sc, sh = h / sc;
+        ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, w, h);
+      } else if (fit === "contain") {
+        const sc = Math.min(w / img.width, h / img.height);
+        const dw = img.width * sc, dh = img.height * sc;
+        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      } else {
+        ctx.drawImage(img, (w - img.width) / 2, (h - img.height) / 2);
+      }
     } catch {}
   }
 
