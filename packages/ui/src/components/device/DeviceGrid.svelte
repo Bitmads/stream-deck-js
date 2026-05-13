@@ -87,7 +87,7 @@
   let brightness = $state(80);
   let selectedEncoder = $derived(getSelectedEncoderIndex());
   // Include varRevision so strip re-renders when variables change
-  let stripCfg = $derived({ ...getStripConfig(), _varRev: store.varRevision, _sel: store.selectedStripItemId });
+  let stripCfg = $derived({ ...getStripConfig(), _rev: store.revision, _varRev: store.varRevision, _sel: store.selectedStripItemId });
 
   function renderStrip(canvas: HTMLCanvasElement, cfg: any) {
     function draw() {
@@ -125,7 +125,23 @@
         // Image
         if (item.imageDataUrl) {
           const img = new Image(); img.src = item.imageDataUrl;
-          if (img.complete) ctx.drawImage(img, item.x, item.y, item.w, item.h);
+          if (img.complete) {
+            const fit = item.imageFit || "fill";
+            const ix = item.x, iy = item.y, iw = item.w, ih = item.h;
+            if (fit === "fill") {
+              ctx.drawImage(img, ix, iy, iw, ih);
+            } else if (fit === "cover") {
+              const sc = Math.max(iw / img.width, ih / img.height);
+              const sw = iw / sc, sh = ih / sc;
+              ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, ix, iy, iw, ih);
+            } else if (fit === "contain") {
+              const sc = Math.min(iw / img.width, ih / img.height);
+              const dw = img.width * sc, dh = img.height * sc;
+              ctx.drawImage(img, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+            } else {
+              ctx.drawImage(img, ix + (iw - img.width) / 2, iy + (ih - img.height) / 2);
+            }
+          }
         }
         // Icon
         if (item.icon) {
