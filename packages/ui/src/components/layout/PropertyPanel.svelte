@@ -508,7 +508,7 @@
               <div class="text-tabs">
                 {#each texts as t, i}
                   <button class="text-tab" class:active={activeTextIndex===i} class:dim={t.hidden} onclick={() => activeTextIndex=i}>
-                    <span class="text-tab-label">{t.text ? resolveTemplate(t.text).substring(0, 10) || `Text ${i+1}` : `Text ${i+1}`}</span>
+                    <span class="text-tab-label">{t.text ? resolveTemplate(t.text).substring(0, 10) || `Label ${i+1}` : `Label ${i+1}`}</span>
                   </button>
                 {/each}
                 <button class="text-tab text-tab-add" onclick={handleAddText}>+</button>
