@@ -87,6 +87,59 @@
 
   <div class="field">
     <span class="lbl">
+      <input type="checkbox" checked={!!config.stroke} onchange={(e) => update({ stroke: (e.target as HTMLInputElement).checked ? { color: "#000000", width: 2 } : undefined })} />
+      Text Stroke
+    </span>
+  </div>
+  {#if config.stroke}
+    <div class="row">
+      <div class="field half">
+        <span class="lbl">Stroke Color</span>
+        <div class="color-row">
+          <input type="color" value={config.stroke.color} oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
+          <input type="text" value={config.stroke.color} class="color-text" oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
+        </div>
+      </div>
+      <div class="field half">
+        <span class="lbl">Width</span>
+        <input type="number" value={config.stroke.width} min="1" max="10" oninput={(e) => update({ stroke: { ...config.stroke!, width: Number((e.target as HTMLInputElement).value) } })} />
+      </div>
+    </div>
+  {/if}
+
+  <div class="field">
+    <span class="lbl">
+      <input type="checkbox" checked={!!config.shadow} onchange={(e) => update({ shadow: (e.target as HTMLInputElement).checked ? { color: "#000000", blur: 4, offsetX: 1, offsetY: 1 } : undefined })} />
+      Text Shadow
+    </span>
+  </div>
+  {#if config.shadow}
+    <div class="row">
+      <div class="field half">
+        <span class="lbl">Shadow Color</span>
+        <div class="color-row">
+          <input type="color" value={config.shadow.color} oninput={(e) => update({ shadow: { ...config.shadow!, color: (e.target as HTMLInputElement).value } })} />
+        </div>
+      </div>
+      <div class="field half">
+        <span class="lbl">Blur</span>
+        <input type="number" value={config.shadow.blur} min="0" max="20" oninput={(e) => update({ shadow: { ...config.shadow!, blur: Number((e.target as HTMLInputElement).value) } })} />
+      </div>
+    </div>
+    <div class="row">
+      <div class="field half">
+        <span class="lbl">Offset X</span>
+        <input type="number" value={config.shadow.offsetX} min="-10" max="10" oninput={(e) => update({ shadow: { ...config.shadow!, offsetX: Number((e.target as HTMLInputElement).value) } })} />
+      </div>
+      <div class="field half">
+        <span class="lbl">Offset Y</span>
+        <input type="number" value={config.shadow.offsetY} min="-10" max="10" oninput={(e) => update({ shadow: { ...config.shadow!, offsetY: Number((e.target as HTMLInputElement).value) } })} />
+      </div>
+    </div>
+  {/if}
+
+  <div class="field">
+    <span class="lbl">
       <input type="checkbox" checked={config.useAbsolutePos} onchange={(e) => update({ useAbsolutePos: (e.target as HTMLInputElement).checked })} />
       Absolute Position
     </span>

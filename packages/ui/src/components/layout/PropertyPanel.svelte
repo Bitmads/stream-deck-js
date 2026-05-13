@@ -456,7 +456,7 @@
               { v: "contain", l: "Fit" },
               { v: "none", l: "Original" },
             ] as opt}
-              <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v; store.revision++; } }}>{opt.l}</button>
+              <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v as any; store.revision++; } }}>{opt.l}</button>
             {/each}
           </div>
         {/if}

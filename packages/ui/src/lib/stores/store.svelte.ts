@@ -12,6 +12,8 @@ export interface TextConfig {
   hAlign: "left" | "center" | "right"; vAlign: "top" | "middle" | "bottom";
   anchor: "start" | "center" | "end"; hidden?: boolean;
   wrap?: "none" | "word" | "char";
+  shadow?: { color: string; blur: number; offsetX: number; offsetY: number };
+  stroke?: { color: string; width: number };
   x?: number; y?: number; useAbsolutePos: boolean;
 }
 
@@ -1083,7 +1085,16 @@ class AppStore {
         }
         ctx.textAlign = t.hAlign === "left" ? "left" : t.hAlign === "right" ? "right" : "center";
         ctx.textBaseline = t.vAlign === "top" ? "top" : t.vAlign === "bottom" ? "bottom" : "middle";
+        if (t.shadow) {
+          ctx.shadowColor = t.shadow.color; ctx.shadowBlur = t.shadow.blur;
+          ctx.shadowOffsetX = t.shadow.offsetX; ctx.shadowOffsetY = t.shadow.offsetY;
+        }
+        if (t.stroke && t.stroke.width > 0) {
+          ctx.strokeStyle = t.stroke.color; ctx.lineWidth = t.stroke.width;
+          ctx.lineJoin = "round"; ctx.strokeText(text, tx, ty, w - 8);
+        }
         ctx.fillText(text, tx, ty, w - 8);
+        if (t.shadow) { ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; }
       }
     }
     ctx.restore(); // end clip

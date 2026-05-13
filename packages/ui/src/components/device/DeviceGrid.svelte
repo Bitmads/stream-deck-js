@@ -213,7 +213,10 @@
               const byBase = t.vAlign === "top" ? item.y + fs : t.vAlign === "bottom" ? item.y + item.h - totalH : item.y + (item.h - totalH) / 2 + fs;
               ty = byBase + li * lh;
             }
+            if (t.shadow) { ctx.shadowColor = t.shadow.color; ctx.shadowBlur = t.shadow.blur; ctx.shadowOffsetX = t.shadow.offsetX; ctx.shadowOffsetY = t.shadow.offsetY; }
+            if (t.stroke && t.stroke.width > 0) { ctx.strokeStyle = t.stroke.color; ctx.lineWidth = t.stroke.width; ctx.lineJoin = "round"; ctx.strokeText(lines[li], tx, ty, item.w - 8); }
             ctx.fillText(lines[li], tx, ty, item.w - 8);
+            if (t.shadow) { ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; }
           }
         }
         ctx.restore();

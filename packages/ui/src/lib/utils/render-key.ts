@@ -139,6 +139,8 @@ function drawText(
     x?: number;
     y?: number;
     wrap?: string;
+    shadow?: { color: string; blur: number; offsetX: number; offsetY: number };
+    stroke?: { color: string; width: number };
   },
   canvasW: number,
   canvasH?: number
@@ -196,7 +198,25 @@ function drawText(
       y = by + i * lineHeight + t.fontSize;
     }
 
+    if (t.shadow) {
+      ctx.shadowColor = t.shadow.color;
+      ctx.shadowBlur = t.shadow.blur;
+      ctx.shadowOffsetX = t.shadow.offsetX;
+      ctx.shadowOffsetY = t.shadow.offsetY;
+    }
+    if (t.stroke && t.stroke.width > 0) {
+      ctx.strokeStyle = t.stroke.color;
+      ctx.lineWidth = t.stroke.width;
+      ctx.lineJoin = "round";
+      ctx.strokeText(line, x, y);
+    }
     ctx.fillText(line, x, y);
+    if (t.shadow) {
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    }
   }
 }
 
