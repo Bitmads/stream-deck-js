@@ -388,7 +388,7 @@
                 <label class="fl">Start value</label>
                 <input type="number" value={assignment.settings.value||'0'} oninput={(e) => handleSettingChange('value', (e.target as HTMLInputElement).value)} />
               {:else if assignment.action.id === "ha-service"}
-                <HAEntityPicker settings={assignment.settings} onchange={(updated) => { for (const [k, v] of Object.entries(updated)) handleSettingChange(k, v); }} />
+                <HAEntityPicker settings={assignment.settings} onchange={(updated) => { for (const k of ['ha_entity','ha_domain','ha_service','ha_attr','ha_control']) handleSettingChange(k, updated[k] || ''); for (const [k, v] of Object.entries(updated)) handleSettingChange(k, v); }} />
               {:else if assignment.action.id === "ha-custom"}
                 <label class="fl">Custom JSON</label>
                 <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea>
