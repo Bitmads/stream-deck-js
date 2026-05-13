@@ -109,17 +109,14 @@
       </label>
       {#if config.shadow}
         <div class="tc-row">
-          <div class="tc-field" style="flex:1;">
-            <div class="tc-color">
-              <input type="color" value={config.shadow.color} oninput={(e) => update({ shadow: { ...config.shadow!, color: (e.target as HTMLInputElement).value } })} />
-            </div>
+          <div class="tc-field" style="flex:0 0 34px;">
+            <span class="tc-label">Color</span>
+            <input type="color" value={config.shadow.color} style="width:34px; height:var(--input-h,34px); border:1px solid var(--border); border-radius:var(--radius-sm); padding:2px; background:var(--bg-surface); cursor:pointer;" oninput={(e) => update({ shadow: { ...config.shadow!, color: (e.target as HTMLInputElement).value } })} />
           </div>
-          <div class="tc-field" style="flex:0 0 60px;">
+          <div class="tc-field" style="flex:1;">
             <span class="tc-label">Blur</span>
             <input type="number" value={config.shadow.blur} min="0" max="20" oninput={(e) => update({ shadow: { ...config.shadow!, blur: Number((e.target as HTMLInputElement).value) } })} />
           </div>
-        </div>
-        <div class="tc-row">
           <div class="tc-field" style="flex:1;">
             <span class="tc-label">X</span>
             <input type="number" value={config.shadow.offsetX} min="-10" max="10" oninput={(e) => update({ shadow: { ...config.shadow!, offsetX: Number((e.target as HTMLInputElement).value) } })} />
