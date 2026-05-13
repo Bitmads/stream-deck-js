@@ -11,6 +11,7 @@ export interface TextConfig {
   fontWeight: "normal" | "bold"; fontStyle: "normal" | "italic"; color: string;
   hAlign: "left" | "center" | "right"; vAlign: "top" | "middle" | "bottom";
   anchor: "start" | "center" | "end"; hidden?: boolean;
+  wrap?: "none" | "word" | "char";
   x?: number; y?: number; useAbsolutePos: boolean;
 }
 

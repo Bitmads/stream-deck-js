@@ -68,6 +68,15 @@
   </div>
 
   <div class="field">
+    <span class="lbl">Wrap</span>
+    <div class="btn-group">
+      <button class:active={(config.wrap || "none") === "none"} onclick={() => update({ wrap: "none" })}>None</button>
+      <button class:active={config.wrap === "word"} onclick={() => update({ wrap: "word" })}>Word</button>
+      <button class:active={config.wrap === "char"} onclick={() => update({ wrap: "char" })}>Char</button>
+    </div>
+  </div>
+
+  <div class="field">
     <span class="lbl">Anchor</span>
     <div class="btn-group">
       <button class:active={config.anchor === "start"} onclick={() => update({ anchor: "start" })}>Start</button>

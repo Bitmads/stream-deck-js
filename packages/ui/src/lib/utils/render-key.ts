@@ -74,6 +74,42 @@ export async function renderKeyToDataUrl(
   return canvas.toDataURL("image/jpeg", 0.92);
 }
 
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, mode: string): string[] {
+  if (mode === "none" || maxWidth <= 0) return text.split("\n");
+  const result: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    if (mode === "word") {
+      const words = paragraph.split(/(\s+)/);
+      let line = "";
+      for (const word of words) {
+        const test = line + word;
+        if (ctx.measureText(test).width > maxWidth && line.trim()) {
+          result.push(line.trim());
+          line = word.trimStart();
+        } else {
+          line = test;
+        }
+      }
+      if (line.trim()) result.push(line.trim());
+      else if (result.length === 0) result.push("");
+    } else {
+      // char wrap
+      let line = "";
+      for (const ch of paragraph) {
+        if (ctx.measureText(line + ch).width > maxWidth && line) {
+          result.push(line);
+          line = ch;
+        } else {
+          line += ch;
+        }
+      }
+      if (line) result.push(line);
+      else if (result.length === 0) result.push("");
+    }
+  }
+  return result;
+}
+
 function drawText(
   ctx: CanvasRenderingContext2D,
   t: {
@@ -89,22 +125,25 @@ function drawText(
     useAbsolutePos: boolean;
     x?: number;
     y?: number;
+    wrap?: string;
   },
   canvasW: number,
   canvasH?: number
 ) {
-  const size = canvasW; // backward compat for callers that pass one size
   const cw = canvasW;
   const ch = canvasH ?? canvasW;
-  const lines = t.text.split("\n");
   const lineHeight = t.fontSize * 1.2;
-  const totalHeight = lines.length * lineHeight;
 
   const fontStyle = t.fontStyle === "italic" ? "italic " : "";
   const fontWeight = t.fontWeight === "bold" ? "bold " : "";
   const fontFamily = t.fontFamily || "sans-serif";
   ctx.font = `${fontStyle}${fontWeight}${t.fontSize}px ${fontFamily}`;
   ctx.fillStyle = t.color;
+
+  const wrapMode = (t as any).wrap || "none";
+  const maxWidth = t.useAbsolutePos ? cw : cw - 4;
+  const lines = wrapText(ctx, t.text, maxWidth, wrapMode);
+  const totalHeight = lines.length * lineHeight;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

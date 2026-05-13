@@ -5,6 +5,30 @@
   import { selectEncoder, getSelectedEncoderIndex, getEncoderConfig, getEncoderResolved, getStripConfig, selectStripItem, addStripItem } from "../../lib/stores/editor.svelte";
   import type { StripItem } from "../../lib/stores/editor.svelte";
 
+  function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, mode: string): string[] {
+    const result: string[] = [];
+    for (const para of text.split("\n")) {
+      if (mode === "word") {
+        const words = para.split(/(\s+)/);
+        let line = "";
+        for (const w of words) {
+          const test = line + w;
+          if (ctx.measureText(test).width > maxW && line.trim()) { result.push(line.trim()); line = w.trimStart(); }
+          else line = test;
+        }
+        if (line.trim()) result.push(line.trim()); else if (!result.length) result.push("");
+      } else {
+        let line = "";
+        for (const c of para) {
+          if (ctx.measureText(line + c).width > maxW && line) { result.push(line); line = c; }
+          else line += c;
+        }
+        if (line) result.push(line); else if (!result.length) result.push("");
+      }
+    }
+    return result;
+  }
+
   let device = $derived(getSelectedDevice());
   let columns = $derived(device?.columns ?? 5);
   let rows = $derived(device?.rows ?? 3);
@@ -159,16 +183,24 @@
           ctx.fillStyle = (color.startsWith("#") || color.startsWith("rgb")) ? color : "#fff";
           const wt = t.fontWeight === "bold" ? "bold " : "";
           const st = t.fontStyle === "italic" ? "italic " : "";
-          ctx.font = `${st}${wt}${t.fontSize || 14}px ${t.fontFamily || "sans-serif"}`;
-          let tx: number, ty: number;
-          if (t.useAbsolutePos) { tx = item.x + (t.x || 0); ty = item.y + (t.y || 0); }
-          else {
-            tx = t.hAlign === "left" ? item.x + 4 : t.hAlign === "right" ? item.x + item.w - 4 : item.x + item.w / 2;
-            ty = t.vAlign === "top" ? item.y + (t.fontSize || 14) : t.vAlign === "bottom" ? item.y + item.h - 4 : item.y + item.h / 2;
-          }
+          const fs = t.fontSize || 14;
+          ctx.font = `${st}${wt}${fs}px ${t.fontFamily || "sans-serif"}`;
           ctx.textAlign = t.hAlign === "left" ? "left" : t.hAlign === "right" ? "right" : "center";
           ctx.textBaseline = t.vAlign === "top" ? "top" : t.vAlign === "bottom" ? "bottom" : "middle";
-          ctx.fillText(text, tx, ty, item.w - 8);
+          const wrapMode = t.wrap || "none";
+          const lines = wrapMode === "none" ? text.split("\n") : wrapLines(ctx, text, item.w - 8, wrapMode);
+          const lh = fs * 1.2;
+          const totalH = lines.length * lh;
+          for (let li = 0; li < lines.length; li++) {
+            let tx: number, ty: number;
+            if (t.useAbsolutePos) { tx = item.x + (t.x || 0); ty = item.y + (t.y || 0) + li * lh; }
+            else {
+              tx = t.hAlign === "left" ? item.x + 4 : t.hAlign === "right" ? item.x + item.w - 4 : item.x + item.w / 2;
+              const byBase = t.vAlign === "top" ? item.y + fs : t.vAlign === "bottom" ? item.y + item.h - totalH : item.y + (item.h - totalH) / 2 + fs;
+              ty = byBase + li * lh;
+            }
+            ctx.fillText(lines[li], tx, ty, item.w - 8);
+          }
         }
         ctx.restore();
         // Selected highlight (outside clip)
