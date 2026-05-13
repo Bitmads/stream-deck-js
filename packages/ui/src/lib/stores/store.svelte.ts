@@ -308,10 +308,24 @@ class AppStore {
       // Apply filters if any
       let result = rawVal;
       for (let i = 1; i < parts.length; i++) {
-        const filterName = parts[i].trim();
-        const filter = AppStore.FILTERS[filterName];
+        const filterPart = parts[i].trim();
+        // map filter: map:key1=val1:key2=val2:*=default
+        if (filterPart.startsWith("map:")) {
+          const entries = filterPart.substring(4).split(":");
+          let matched = false;
+          for (const entry of entries) {
+            const eq = entry.indexOf("=");
+            if (eq < 0) continue;
+            const key = entry.substring(0, eq);
+            const val = entry.substring(eq + 1);
+            if (key === "*") { result = val; matched = true; break; }
+            if (result === key) { result = val; matched = true; break; }
+          }
+          continue;
+        }
+        const filter = AppStore.FILTERS[filterPart];
         if (filter) result = filter(result);
-        else return result; // unknown filter = treat rest as fallback (no-op since value exists)
+        else return result;
       }
       return result;
     });
