@@ -499,7 +499,7 @@
 
         <!-- Text -->
         <button class="section-toggle" onclick={() => showText = !showText}>
-          <span>Text</span>
+          <span>Labels</span>
           <span class="section-arrow" class:open={showText}></span>
         </button>
         {#if showText}
