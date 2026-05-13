@@ -252,10 +252,11 @@
 
   /* Toggle checkbox */
   .tc-toggle {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--text-secondary); cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); cursor: pointer;
   }
-  .tc-toggle input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; }
+  .tc-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
 
   .tc input[type="number"] { -moz-appearance: textfield; }
 </style>

@@ -568,7 +568,7 @@
   .color-row input[type="text"] { flex: 1; font-family: monospace; }
   .img-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
   .img-row img { width: 48px; height: 48px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--border); }
-  .sm-btn { display: inline-block; padding: 5px 10px; border-radius: var(--radius-sm); background: var(--bg-tertiary); color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: all 0.15s; }
+  .sm-btn { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border-radius: var(--radius-sm); background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
   .sm-btn:hover { background: var(--accent); color: white; }
   .sm-btn.danger { background: rgba(239,83,80,0.08); color: var(--danger); }
   .sm-btn.danger:hover { background: rgba(239,83,80,0.2); }
