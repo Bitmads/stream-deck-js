@@ -138,7 +138,13 @@
 
   {#each getPluginsWithSettings() as plugin}
     <div class="settings-section">
-      <svelte:component this={plugin.settingsComponent} />
+      {#if plugin.settingsComponent}
+        <svelte:component this={plugin.settingsComponent} />
+      {:else if plugin.hasConfig}
+        {#await import("../components/plugin/PluginConfig.svelte") then mod}
+          <mod.default pluginId={plugin.id} pluginName={plugin.name} />
+        {/await}
+      {/if}
     </div>
   {/each}
 

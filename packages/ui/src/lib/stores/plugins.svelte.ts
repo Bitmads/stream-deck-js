@@ -13,6 +13,7 @@ export interface PluginDef {
   author: string;
   icon: string;
   type: "builtin" | "external";
+  hasConfig?: boolean;
   init?: () => Promise<void>;
   destroy?: () => Promise<void>;
   settingsComponent?: Component;
@@ -127,9 +128,9 @@ export function getAllPlugins(): PluginDef[] {
   return plugins;
 }
 
-/** Get enabled plugins that have a settings component. */
+/** Get enabled plugins that have a settings component or config schema. */
 export function getPluginsWithSettings(): PluginDef[] {
-  return plugins.filter(p => isEnabled(p.id) && p.settingsComponent);
+  return plugins.filter(p => isEnabled(p.id) && (p.settingsComponent || p.hasConfig));
 }
 
 /** Discover external plugins from the backend and register them. */
@@ -139,6 +140,7 @@ async function discoverExternalPlugins() {
       uuid: string; name: string; description: string;
       version: string; author: string;
       actions: Array<{ uuid: string; name: string }>;
+      has_config: boolean;
     }>>("discover_external_plugins");
 
     for (const ext of externals) {
@@ -154,12 +156,13 @@ async function discoverExternalPlugins() {
         author: ext.author,
         icon: "🔌",
         type: "external",
+        hasConfig: ext.has_config,
         actions,
         init: async () => {
-          await invoke("start_external_plugin", { uuid: ext.uuid }).catch(() => {});
+          await invoke("start_external_plugin", { uuid: ext.uuid });
         },
         destroy: async () => {
-          await invoke("stop_external_plugin", { uuid: ext.uuid }).catch(() => {});
+          await invoke("stop_external_plugin", { uuid: ext.uuid });
         },
       });
     }
