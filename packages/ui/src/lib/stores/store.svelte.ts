@@ -46,6 +46,7 @@ export interface StripItem {
   // Visual (same concepts as KeyAssignment)
   backgroundColor?: string;  // {{$var|rgb}} supported
   imageDataUrl?: string;
+  imageFit?: "fill" | "cover" | "contain" | "none";
   icon?: IconConfig;
   texts?: TextConfig[];
   // Bar indicator (progress fill)
@@ -998,7 +999,21 @@ class AppStore {
     if (item.imageDataUrl) {
       try {
         const img = await this.loadImg(item.imageDataUrl);
-        ctx.drawImage(img, x, y, w, h);
+        const fit = item.imageFit || "fill";
+        if (fit === "fill") {
+          ctx.drawImage(img, x, y, w, h);
+        } else if (fit === "cover") {
+          const scale = Math.max(w / img.width, h / img.height);
+          const sw = w / scale, sh = h / scale;
+          const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
+          ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+        } else if (fit === "contain") {
+          const scale = Math.min(w / img.width, h / img.height);
+          const dw = img.width * scale, dh = img.height * scale;
+          ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+        } else {
+          ctx.drawImage(img, x + (w - img.width) / 2, y + (h - img.height) / 2);
+        }
       } catch {}
     }
 

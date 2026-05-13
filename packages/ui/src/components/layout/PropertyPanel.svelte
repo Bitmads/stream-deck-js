@@ -157,7 +157,18 @@
         </div>
         <label class="fl">Image</label>
         {#if si.imageDataUrl}
-          <div class="img-row"><img src={si.imageDataUrl} alt="" style="width:100px;height:50px;border-radius:4px;" /><button class="sm-btn danger" onclick={() => updateStripItem(si.id, { imageDataUrl: undefined })}>Remove</button></div>
+          <div class="img-row"><img src={si.imageDataUrl} alt="" style="width:100px;height:50px;border-radius:4px;object-fit:{si.imageFit || 'fill'};" /><button class="sm-btn danger" onclick={() => updateStripItem(si.id, { imageDataUrl: undefined })}>Remove</button></div>
+          <label class="fl">Fit</label>
+          <div class="mrow">
+            {#each [
+              { v: "fill", l: "Stretch" },
+              { v: "cover", l: "Cover" },
+              { v: "contain", l: "Fit" },
+              { v: "none", l: "Original" },
+            ] as opt}
+              <button class:active={(si.imageFit || "fill") === opt.v} onclick={() => updateStripItem(si.id, { imageFit: opt.v })}>{opt.l}</button>
+            {/each}
+          </div>
         {:else}
           <label class="sm-btn">Upload<input type="file" accept="image/*" onchange={(e) => { const f=(e.target as HTMLInputElement).files?.[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{if(typeof r.result==="string") updateStripItem(si.id,{imageDataUrl:r.result})}; r.readAsDataURL(f); }} hidden /></label>
         {/if}
