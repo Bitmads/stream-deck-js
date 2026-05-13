@@ -287,6 +287,11 @@ class AppStore {
     percent: (v) => `${Math.round((parseFloat(v) || 0) * 100)}%`,
     upper: (v) => v.toUpperCase(),
     lower: (v) => v.toLowerCase(),
+    f2c: (v) => String((parseFloat(v) - 32) * 5 / 9),
+    c2f: (v) => String(parseFloat(v) * 9 / 5 + 32),
+    round1: (v) => (parseFloat(v) || 0).toFixed(1),
+    round2: (v) => (parseFloat(v) || 0).toFixed(2),
+    abs: (v) => String(Math.abs(parseFloat(v) || 0)),
   };
 
   resolveTemplate(text: string): string {
