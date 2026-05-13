@@ -212,6 +212,7 @@ fn main() {
             commands::plugin::discover_external_plugins,
             commands::plugin::start_external_plugin,
             commands::plugin::stop_external_plugin,
+            commands::proxy::fetch_image_as_data_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Stream Deck");

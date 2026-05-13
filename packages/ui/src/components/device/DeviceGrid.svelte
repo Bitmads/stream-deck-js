@@ -117,8 +117,8 @@
   function fetchImgUrl(src: string, redraw: () => void): string {
     if (!src.startsWith("http")) return src;
     if (imgCache[src]) return imgCache[src];
-    fetch(src).then(r => r.blob()).then(b => {
-      imgCache[src] = URL.createObjectURL(b);
+    invoke<string>("fetch_image_as_data_url", { url: src }).then(dataUrl => {
+      imgCache[src] = dataUrl;
       redraw();
     }).catch(() => {});
     return "";

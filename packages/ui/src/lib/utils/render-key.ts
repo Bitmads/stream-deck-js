@@ -187,28 +187,27 @@ function drawText(
   }
 }
 
+import { invoke } from "@tauri-apps/api/core";
+
+const imgUrlCache: Record<string, string> = {};
+
 async function loadImage(src: string): Promise<HTMLImageElement> {
   let url = src;
-  // Fetch remote URLs as blob to avoid CORS canvas tainting
   if (src.startsWith("http://") || src.startsWith("https://")) {
-    try {
-      const resp = await fetch(src);
-      const blob = await resp.blob();
-      url = URL.createObjectURL(blob);
-    } catch {
-      // Fall back to direct src
+    if (imgUrlCache[src]) {
+      url = imgUrlCache[src];
+    } else {
+      try {
+        const dataUrl = await invoke<string>("fetch_image_as_data_url", { url: src });
+        imgUrlCache[src] = dataUrl;
+        url = dataUrl;
+      } catch {}
     }
   }
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => {
-      if (url !== src) URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = (e) => {
-      if (url !== src) URL.revokeObjectURL(url);
-      reject(e);
-    };
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
     img.src = url;
   });
 }

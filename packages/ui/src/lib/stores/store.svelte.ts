@@ -1089,19 +1089,24 @@ class AppStore {
     ctx.restore(); // end clip
   }
 
+  private imgUrlCache: Record<string, string> = {};
   private async loadImg(src: string): Promise<HTMLImageElement> {
     let url = src;
     if (src.startsWith("http://") || src.startsWith("https://")) {
-      try {
-        const resp = await fetch(src);
-        const blob = await resp.blob();
-        url = URL.createObjectURL(blob);
-      } catch {}
+      if (this.imgUrlCache[src]) {
+        url = this.imgUrlCache[src];
+      } else {
+        try {
+          const dataUrl = await invoke<string>("fetch_image_as_data_url", { url: src });
+          this.imgUrlCache[src] = dataUrl;
+          url = dataUrl;
+        } catch {}
+      }
     }
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => { if (url !== src) URL.revokeObjectURL(url); resolve(img); };
-      img.onerror = (e) => { if (url !== src) URL.revokeObjectURL(url); reject(e); };
+      img.onload = () => resolve(img);
+      img.onerror = (e) => reject(e);
       img.src = url;
     });
   }
