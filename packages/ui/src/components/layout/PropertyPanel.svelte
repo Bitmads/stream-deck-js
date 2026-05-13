@@ -358,42 +358,42 @@
           {#if assignment && assignment.action.id !== "none" && !actionPickerOpen}
             <div class="act-settings">
               {#if assignment.action.id === "command"}
-                <label class="fl">Command</label>
-                <VarInput value={assignment.settings.command||''} placeholder="e.g. firefox" onchange={(v) => handleSettingChange('command', v)} />
+                <div class="field-group"><label class="fl">Command</label>
+                <VarInput value={assignment.settings.command||''} placeholder="e.g. firefox" onchange={(v) => handleSettingChange('command', v)} /></div>
               {:else if assignment.action.id === "hotkey"}
-                <label class="fl">Key</label>
-                <input type="text" value={assignment.settings.key||''} placeholder="e.g. F5" oninput={(e) => handleSettingChange('key', (e.target as HTMLInputElement).value)} />
-                <label class="fl">Modifiers</label>
-                <input type="text" value={assignment.settings.modifiers||''} placeholder="ctrl, shift" oninput={(e) => handleSettingChange('modifiers', (e.target as HTMLInputElement).value)} />
+                <div class="field-group"><label class="fl">Key</label>
+                <input type="text" value={assignment.settings.key||''} placeholder="e.g. F5" oninput={(e) => handleSettingChange('key', (e.target as HTMLInputElement).value)} /></div>
+                <div class="field-group"><label class="fl">Modifiers</label>
+                <input type="text" value={assignment.settings.modifiers||''} placeholder="ctrl, shift" oninput={(e) => handleSettingChange('modifiers', (e.target as HTMLInputElement).value)} /></div>
               {:else if assignment.action.id === "launch"}
-                <label class="fl">Application</label>
-                <VarInput value={assignment.settings.target||''} placeholder="firefox" onchange={(v) => handleSettingChange('target', v)} />
+                <div class="field-group"><label class="fl">Application</label>
+                <VarInput value={assignment.settings.target||''} placeholder="firefox" onchange={(v) => handleSettingChange('target', v)} /></div>
               {:else if assignment.action.id === "open-url"}
-                <label class="fl">URL</label>
-                <VarInput value={assignment.settings.url||''} placeholder="https://..." onchange={(v) => handleSettingChange('url', v)} />
+                <div class="field-group"><label class="fl">URL</label>
+                <VarInput value={assignment.settings.url||''} placeholder="https://..." onchange={(v) => handleSettingChange('url', v)} /></div>
               {:else if assignment.action.id === "http-request"}
-                <label class="fl">URL</label>
-                <VarInput value={assignment.settings.url||''} placeholder="http://..." onchange={(v) => handleSettingChange('url', v)} />
+                <div class="field-group"><label class="fl">URL</label>
+                <VarInput value={assignment.settings.url||''} placeholder="http://..." onchange={(v) => handleSettingChange('url', v)} /></div>
                 <div class="mrow">{#each ["GET","POST","PUT","DELETE"] as m}<button class:active={(assignment.settings.method||'POST')===m} onclick={() => handleSettingChange('method',m)}>{m}</button>{/each}</div>
-                <label class="fl">Headers</label>
-                <textarea value={assignment.settings.headers||''} placeholder="Key: Value" oninput={(e) => handleSettingChange('headers', (e.target as HTMLTextAreaElement).value)} rows="2"></textarea>
-                <label class="fl">Body</label>
-                <VarInput value={assignment.settings.body||''} placeholder={'{"key":"val"}'} onchange={(v) => handleSettingChange('body', v)} multiline={true} rows={3} />
+                <div class="field-group"><label class="fl">Headers</label>
+                <textarea value={assignment.settings.headers||''} placeholder="Key: Value" oninput={(e) => handleSettingChange('headers', (e.target as HTMLTextAreaElement).value)} rows="2"></textarea></div>
+                <div class="field-group"><label class="fl">Body</label>
+                <VarInput value={assignment.settings.body||''} placeholder={'{"key":"val"}'} onchange={(v) => handleSettingChange('body', v)} multiline={true} rows={3} /></div>
               {:else if assignment.action.id === "switch-scene"}
-                <label class="fl">Scene</label>
+                <div class="field-group"><label class="fl">Scene</label>
                 <div class="chips">{#each allScenes as scene}<button class="chip" class:active={assignment.settings.sceneId===scene.id} onclick={() => handleSettingChange('sceneId',scene.id)}>{scene.name}</button>{/each}</div>
-                <div class="mrow" style="margin-top:4px;"><button class:active={(assignment.settings.mode||'push')==='push'} onclick={() => handleSettingChange('mode','push')}>Push</button><button class:active={assignment.settings.mode==='switch'} onclick={() => handleSettingChange('mode','switch')}>Switch</button></div>
+                <div class="mrow"><button class:active={(assignment.settings.mode||'push')==='push'} onclick={() => handleSettingChange('mode','push')}>Push</button><button class:active={assignment.settings.mode==='switch'} onclick={() => handleSettingChange('mode','switch')}>Switch</button></div></div>
               {:else if assignment.action.id === "timer"}
-                <label class="fl">Duration (sec)</label>
-                <input type="number" value={assignment.settings.duration||'60'} oninput={(e) => handleSettingChange('duration', (e.target as HTMLInputElement).value)} />
+                <div class="field-group"><label class="fl">Duration (sec)</label>
+                <input type="number" value={assignment.settings.duration||'60'} oninput={(e) => handleSettingChange('duration', (e.target as HTMLInputElement).value)} /></div>
               {:else if assignment.action.id === "counter"}
-                <label class="fl">Start value</label>
-                <input type="number" value={assignment.settings.value||'0'} oninput={(e) => handleSettingChange('value', (e.target as HTMLInputElement).value)} />
+                <div class="field-group"><label class="fl">Start value</label>
+                <input type="number" value={assignment.settings.value||'0'} oninput={(e) => handleSettingChange('value', (e.target as HTMLInputElement).value)} /></div>
               {:else if assignment.action.id === "ha-service"}
                 <HAEntityPicker settings={assignment.settings} onchange={(updated) => { for (const k of ['ha_entity','ha_domain','ha_service','ha_attr','ha_control']) handleSettingChange(k, updated[k] || ''); for (const [k, v] of Object.entries(updated)) handleSettingChange(k, v); }} />
               {:else if assignment.action.id === "ha-custom"}
-                <label class="fl">Custom JSON</label>
-                <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea>
+                <div class="field-group"><label class="fl">Custom JSON</label>
+                <textarea value={assignment.settings.ha_custom_json||''} placeholder={'{"domain":"light","service":"toggle","target":{"entity_id":"light.living_room"}}'} oninput={(e) => handleSettingChange('ha_custom_json', (e.target as HTMLTextAreaElement).value)} rows="4"></textarea></div>
               {:else if assignment.action.id === "multi-action"}
                 {@const steps = getMultiSteps(assignment)}
                 <div class="ma-steps">
@@ -439,25 +439,33 @@
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
           {selectedKey !== null && isPinned(selectedKey) ? 'Pinned' : 'Pin'}
         </button>
-        <label class="fl">Background</label>
-        <div class="color-row"><input type="color" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /><input type="text" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /></div>
-        <label class="fl">Image</label>
-        {#if assignment?.imageDataUrl}
-          <div class="img-row"><img src={assignment.imageDataUrl} alt="" /><label class="sm-btn">Change<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyImage(selectedKey); }}>Remove</button></div>
-        {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
-        <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
-        <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
+        <div class="field-group">
+          <label class="fl">Background</label>
+          <div class="color-row"><input type="color" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /><input type="text" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /></div>
+        </div>
+        <div class="field-group">
+          <label class="fl">Image</label>
+          {#if assignment?.imageDataUrl}
+            <div class="img-row"><img src={assignment.imageDataUrl} alt="" /><label class="sm-btn">Change<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyImage(selectedKey); }}>Remove</button></div>
+          {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
+        </div>
+        <div class="field-group">
+          <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
+          <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
+        </div>
         {#if assignment?.imageDataUrl || assignment?.imageUrl}
-          <label class="fl">Fit</label>
-          <div class="mrow">
-            {#each [
-              { v: "fill", l: "Stretch" },
-              { v: "cover", l: "Cover" },
-              { v: "contain", l: "Fit" },
-              { v: "none", l: "Original" },
-            ] as opt}
-              <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v as any; store.revision++; } }}>{opt.l}</button>
-            {/each}
+          <div class="field-group">
+            <label class="fl">Fit</label>
+            <div class="mrow">
+              {#each [
+                { v: "fill", l: "Stretch" },
+                { v: "cover", l: "Cover" },
+                { v: "contain", l: "Fit" },
+                { v: "none", l: "Original" },
+              ] as opt}
+                <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v as any; store.revision++; } }}>{opt.l}</button>
+              {/each}
+            </div>
           </div>
         {/if}
         {#if assignment?.icon}
@@ -505,8 +513,8 @@
   .pp-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
   .pp-body { padding: 14px; overflow-y: auto; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--item-gap); }
   .pp-empty { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 24px; }
-  .fl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0 0 4px; font-weight: 500; }
-  .fl:first-child { margin-top: 0; }
+  .fl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0; font-weight: 500; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
   input[type="text"], input[type="number"], textarea { width: 100%; height: var(--input-h, 34px); padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; outline: none; box-sizing: border-box; transition: border-color 0.15s; }
   input:focus, textarea:focus { border-color: var(--accent); }
   textarea { resize: vertical; font-family: monospace; font-size: 11px; height: auto; padding: 8px 10px; }
