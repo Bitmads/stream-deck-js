@@ -38,6 +38,11 @@
   let allScenes = $derived(getScenes());
   let actionPickerOpen = $state(false);
 
+  // Collapsible sections
+  let showBackground = $state(true);
+  let showText = $state(true);
+  let showIcon = $state(true);
+
   // Encoder: which sub-section (rotate/press)
   let encoderTab = $state<"rotate" | "press">("rotate");
   let gesturePickerOpen = $state<"tap" | "longpress" | "swipe" | null>(null);
@@ -439,61 +444,86 @@
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
           {selectedKey !== null && isPinned(selectedKey) ? 'Pinned' : 'Pin'}
         </button>
-        <div class="field-group">
-          <label class="fl">Background</label>
-          <div class="color-row"><input type="color" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /><input type="text" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /></div>
-        </div>
-        <div class="field-group">
-          <label class="fl">Image</label>
-          {#if assignment?.imageDataUrl}
-            <div class="img-row"><img src={assignment.imageDataUrl} alt="" /><label class="sm-btn">Change<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyImage(selectedKey); }}>Remove</button></div>
-          {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
-        </div>
-        <div class="field-group">
-          <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
-          <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
-        </div>
-        {#if assignment?.imageDataUrl || assignment?.imageUrl}
-          <div class="field-group">
-            <label class="fl">Fit</label>
-            <div class="mrow">
-              {#each [
-                { v: "fill", l: "Stretch" },
-                { v: "cover", l: "Cover" },
-                { v: "contain", l: "Fit" },
-                { v: "none", l: "Original" },
-              ] as opt}
-                <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v as any; store.revision++; } }}>{opt.l}</button>
-              {/each}
+
+        <!-- Background & Image -->
+        <button class="section-toggle" onclick={() => showBackground = !showBackground}>
+          <span>Background & Image</span>
+          <span class="section-arrow" class:open={showBackground}></span>
+        </button>
+        {#if showBackground}
+          <div class="section-body">
+            <div class="field-group">
+              <label class="fl">Background</label>
+              <div class="color-row"><input type="color" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /><input type="text" value={assignment?.backgroundColor||"#000000"} oninput={handleColorChange} /></div>
             </div>
+            <div class="field-group">
+              <label class="fl">Image</label>
+              {#if assignment?.imageDataUrl}
+                <div class="img-row"><img src={assignment.imageDataUrl} alt="" /><label class="sm-btn">Change<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyImage(selectedKey); }}>Remove</button></div>
+              {:else}<label class="sm-btn">Upload<input type="file" accept="image/*" onchange={handleImageUpload} hidden /></label>{/if}
+            </div>
+            <div class="field-group">
+              <label class="fl">Image URL <span class="hint-inline">supports {"{{$var}}"}</span></label>
+              <VarInput value={assignment?.imageUrl || ''} placeholder="https://..." onchange={(v) => { if (selectedKey !== null) { const a = assignment!; a.imageUrl = v || undefined; store.revision++; } }} />
+            </div>
+            {#if assignment?.imageDataUrl || assignment?.imageUrl}
+              <div class="field-group">
+                <label class="fl">Fit</label>
+                <div class="mrow">
+                  {#each [
+                    { v: "fill", l: "Stretch" },
+                    { v: "cover", l: "Cover" },
+                    { v: "contain", l: "Fit" },
+                    { v: "none", l: "Original" },
+                  ] as opt}
+                    <button class:active={(assignment?.imageFit || "fill") === opt.v} onclick={() => { if (selectedKey !== null && assignment) { assignment.imageFit = opt.v as any; store.revision++; } }}>{opt.l}</button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
         {/if}
+
+        <!-- Icon -->
         {#if assignment?.icon}
-          <div class="field-group">
-            <label class="fl">Icon</label>
-            <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={assignment.icon.viewBox} width="32" height="32" fill="none" stroke={assignment.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html assignment.icon.svgBody}</svg></button><span class="icon-name">{assignment.icon.iconName}</span><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button></div>
+          <button class="section-toggle" onclick={() => showIcon = !showIcon}>
+            <span>Icon</span>
+            <span class="section-arrow" class:open={showIcon}></span>
+          </button>
+          {#if showIcon}
+            <div class="section-body">
+              <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={assignment.icon.viewBox} width="32" height="32" fill="none" stroke={assignment.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html assignment.icon.svgBody}</svg></button><span class="icon-name">{assignment.icon.iconName}</span><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button></div>
+            </div>
+          {/if}
+        {/if}
+
+        <!-- Text -->
+        <button class="section-toggle" onclick={() => showText = !showText}>
+          <span>Text</span>
+          <span class="section-arrow" class:open={showText}></span>
+        </button>
+        {#if showText}
+          <div class="section-body">
+            <div class="text-head"><button class="add-circle" onclick={handleAddText}>+</button></div>
+            {#if texts.length > 0}
+              <div class="text-chips">
+                {#each texts as t, i}
+                  <button class="text-chip" class:active={activeTextIndex===i} class:dim={t.hidden} onclick={() => activeTextIndex=i}>
+                    <svg class="eye-icon" onclick={(e) => { e.stopPropagation(); handleTextChange({...t, hidden:!t.hidden}, i); }} viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
+                      {#if t.hidden}<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                      {:else}<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>{/if}
+                    </svg>
+                    {t.text ? resolveTemplate(t.text).substring(0, 8) || `${i+1}` : `${i+1}`}
+                    {#if texts.length > 1}
+                      <span class="del-x" onclick={(e) => { e.stopPropagation(); handleRemoveText(i); }}>×</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+              {#if texts[activeTextIndex]}<TextConfigPanel config={texts[activeTextIndex]} onChange={(c) => handleTextChange(c, activeTextIndex)} />{/if}
+            {:else}<button class="add-text-btn" onclick={handleAddText}>+ Add text</button>{/if}
           </div>
         {/if}
-        <div class="text-section">
-          <div class="text-head"><label class="fl" style="margin:0;">Text</label><button class="add-circle" onclick={handleAddText}>+</button></div>
-          {#if texts.length > 0}
-            <div class="text-chips">
-              {#each texts as t, i}
-                <button class="text-chip" class:active={activeTextIndex===i} class:dim={t.hidden} onclick={() => activeTextIndex=i}>
-                  <svg class="eye-icon" onclick={(e) => { e.stopPropagation(); handleTextChange({...t, hidden:!t.hidden}, i); }} viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-                    {#if t.hidden}<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                    {:else}<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>{/if}
-                  </svg>
-                  {t.text ? resolveTemplate(t.text).substring(0, 8) || `${i+1}` : `${i+1}`}
-                  {#if texts.length > 1}
-                    <span class="del-x" onclick={(e) => { e.stopPropagation(); handleRemoveText(i); }}>×</span>
-                  {/if}
-                </button>
-              {/each}
-            </div>
-            {#if texts[activeTextIndex]}<TextConfigPanel config={texts[activeTextIndex]} onChange={(c) => handleTextChange(c, activeTextIndex)} />{/if}
-          {:else}<button class="add-text-btn" onclick={handleAddText}>+ Add text</button>{/if}
-        </div>
 
       <!-- ═══ ICONS TAB ═══ -->
       {:else if activeTab === "icons" && !isEncoder}
@@ -517,6 +547,18 @@
   .pp-empty { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 24px; }
   .fl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0; font-weight: 500; }
   .field-group { display: flex; flex-direction: column; gap: 4px; }
+  .section-toggle {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0;
+    border-top: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; color: var(--text-secondary);
+    cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .section-toggle:first-child { border-top: none; }
+  .section-toggle:hover { color: var(--text-primary); }
+  .section-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; transition: transform 0.15s; }
+  .section-arrow.open { transform: rotate(180deg); }
+  .section-body { display: flex; flex-direction: column; gap: var(--item-gap); padding-bottom: 4px; }
   input[type="text"], input[type="number"], textarea { width: 100%; min-height: var(--input-h, 34px); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; outline: none; box-sizing: border-box; transition: border-color 0.15s; font-family: inherit; }
   input[type="text"], input[type="number"] { padding: 0 10px; height: var(--input-h, 34px); }
   input:focus, textarea:focus { border-color: var(--accent); }
