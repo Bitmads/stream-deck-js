@@ -310,6 +310,22 @@ class AppStore {
       let result = rawVal;
       for (let i = 1; i < parts.length; i++) {
         const filterPart = parts[i].trim();
+        // replace filter: replace:search=replacement (string) or replace:/regex/=replacement
+        if (filterPart.startsWith("replace:")) {
+          const rest = filterPart.substring(8);
+          const eq = rest.indexOf("=");
+          const search = eq >= 0 ? rest.substring(0, eq) : rest;
+          const replacement = eq >= 0 ? rest.substring(eq + 1) : "";
+          if (search.startsWith("/") && search.lastIndexOf("/") > 0) {
+            const lastSlash = search.lastIndexOf("/");
+            const pattern = search.substring(1, lastSlash);
+            const flags = search.substring(lastSlash + 1) || "g";
+            try { result = result.replace(new RegExp(pattern, flags), replacement); } catch {}
+          } else {
+            result = result.split(search).join(replacement);
+          }
+          continue;
+        }
         // map filter: map:key1=val1:key2=val2:*=default
         if (filterPart.startsWith("map:")) {
           const entries = filterPart.substring(4).split(":");
