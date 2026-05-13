@@ -517,9 +517,10 @@
   .pp-empty { font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 24px; }
   .fl { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0; font-weight: 500; }
   .field-group { display: flex; flex-direction: column; gap: 4px; }
-  input[type="text"], input[type="number"], textarea { width: 100%; height: var(--input-h, 34px); padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; outline: none; box-sizing: border-box; transition: border-color 0.15s; }
+  input[type="text"], input[type="number"], textarea { width: 100%; min-height: var(--input-h, 34px); padding: 8px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 12px; outline: none; box-sizing: border-box; transition: border-color 0.15s; font-family: inherit; }
+  input[type="text"], input[type="number"] { padding: 0 10px; height: var(--input-h, 34px); }
   input:focus, textarea:focus { border-color: var(--accent); }
-  textarea { resize: vertical; font-family: monospace; font-size: 11px; height: auto; padding: 8px 10px; }
+  textarea { resize: vertical; line-height: 1.5; }
   .search-in { margin-top: 6px; }
   .action-sel { display: flex; align-items: center; gap: 8px; width: 100%; height: 38px; padding: 0 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-surface); cursor: pointer; font-size: 12px; color: var(--text-primary); transition: border-color 0.15s; }
   .action-sel:hover { border-color: var(--accent); }

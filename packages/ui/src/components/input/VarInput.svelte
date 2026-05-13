@@ -126,14 +126,21 @@
   .var-input-wrap textarea,
   .var-input-wrap input[type="text"] {
     width: 100%;
-    padding: 6px 8px;
+    padding: 8px 10px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
-    background: var(--bg-primary);
+    background: var(--bg-surface);
     color: var(--text-primary);
     font-size: 12px;
+    font-family: inherit;
     outline: none;
     resize: vertical;
+    line-height: 1.5;
+    transition: border-color 0.15s;
+  }
+  .var-input-wrap input[type="text"] {
+    height: var(--input-h, 34px);
+    padding: 0 10px;
   }
   .var-input-wrap textarea:focus,
   .var-input-wrap input:focus { border-color: var(--accent); }
