@@ -504,24 +504,27 @@
         </button>
         {#if showText}
           <div class="section-body">
-            <div class="text-head"><button class="add-circle" onclick={handleAddText}>+</button></div>
             {#if texts.length > 0}
-              <div class="text-chips">
+              <div class="text-tabs">
                 {#each texts as t, i}
-                  <button class="text-chip" class:active={activeTextIndex===i} class:dim={t.hidden} onclick={() => activeTextIndex=i}>
-                    <svg class="eye-icon" onclick={(e) => { e.stopPropagation(); handleTextChange({...t, hidden:!t.hidden}, i); }} viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2">
-                      {#if t.hidden}<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                      {:else}<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>{/if}
-                    </svg>
-                    {t.text ? resolveTemplate(t.text).substring(0, 8) || `${i+1}` : `${i+1}`}
-                    {#if texts.length > 1}
-                      <span class="del-x" onclick={(e) => { e.stopPropagation(); handleRemoveText(i); }}>×</span>
-                    {/if}
+                  <button class="text-tab" class:active={activeTextIndex===i} class:dim={t.hidden} onclick={() => activeTextIndex=i}>
+                    <span class="text-tab-label">{t.text ? resolveTemplate(t.text).substring(0, 10) || `Text ${i+1}` : `Text ${i+1}`}</span>
                   </button>
                 {/each}
+                <button class="text-tab text-tab-add" onclick={handleAddText}>+</button>
               </div>
-              {#if texts[activeTextIndex]}<TextConfigPanel config={texts[activeTextIndex]} onChange={(c) => handleTextChange(c, activeTextIndex)} />{/if}
-            {:else}<button class="add-text-btn" onclick={handleAddText}>+ Add text</button>{/if}
+              {#if texts[activeTextIndex]}
+                <div class="text-tab-actions">
+                  <button class="text-tab-action" onclick={() => { const t = texts[activeTextIndex]; handleTextChange({...t, hidden:!t.hidden}, activeTextIndex); }}>
+                    {texts[activeTextIndex].hidden ? 'Show' : 'Hide'}
+                  </button>
+                  {#if texts.length > 1}
+                    <button class="text-tab-action danger" onclick={() => handleRemoveText(activeTextIndex)}>Remove</button>
+                  {/if}
+                </div>
+                <TextConfigPanel config={texts[activeTextIndex]} onChange={(c) => handleTextChange(c, activeTextIndex)} />
+              {/if}
+            {:else}<button class="add-text-btn" onclick={handleAddText}>+ Add text layer</button>{/if}
           </div>
         {/if}
 
@@ -620,19 +623,32 @@
   .pin-btn { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; font-size: 10px; color: var(--text-muted); background: var(--bg-primary); border: 1px solid var(--border); cursor: pointer; margin-bottom: 6px; }
   .pin-btn:hover { border-color: var(--accent); }
   .pin-btn.pinned { color: var(--warning); border-color: var(--warning); background: rgba(243,156,18,0.06); }
-  .text-section { margin-top: 4px; }
-  .text-head { display: flex; align-items: center; justify-content: space-between; }
-  .add-circle { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: white; font-size: 12px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; border: none; }
-  .text-chips { display: flex; gap: 2px; margin: 4px 0 6px; flex-wrap: wrap; }
-  .text-chip { padding: 2px 6px; border-radius: 4px; font-size: 10px; color: var(--text-muted); background: var(--bg-primary); border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; gap: 3px; }
-  .text-chip:hover { border-color: var(--text-muted); }
-  .text-chip.active { color: var(--accent); border-color: var(--accent); }
-  .text-chip.dim { opacity: 0.4; }
-  .eye-icon { cursor: pointer; flex-shrink: 0; }
-  .eye-icon:hover { opacity: 0.7; }
-  .del-x { font-size: 11px; color: var(--text-muted); cursor: pointer; margin-left: 1px; line-height: 1; }
-  .del-x:hover { color: var(--danger); }
-  .add-text-btn { width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; border: 1px dashed var(--border); }
+  .text-tabs { display: flex; gap: 3px; flex-wrap: wrap; }
+  .text-tab {
+    height: 30px; padding: 0 12px;
+    border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;
+    color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.15s;
+    display: flex; align-items: center; gap: 4px;
+    min-width: 50px; justify-content: center;
+  }
+  .text-tab:hover { color: var(--text-primary); border-color: var(--border-light); }
+  .text-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-subtle); }
+  .text-tab.dim { opacity: 0.4; }
+  .text-tab-add { min-width: 30px; padding: 0; font-size: 16px; font-weight: 600; color: var(--accent); }
+  .text-tab-add:hover { background: var(--accent-subtle); border-color: var(--accent); }
+  .text-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px; }
+  .text-tab-actions { display: flex; gap: 4px; }
+  .text-tab-action {
+    height: 24px; padding: 0 8px;
+    border-radius: var(--radius-sm); font-size: 10px; font-weight: 500;
+    color: var(--text-muted); background: var(--bg-surface); border: 1px solid var(--border);
+    cursor: pointer; transition: all 0.15s;
+  }
+  .text-tab-action:hover { color: var(--text-primary); }
+  .text-tab-action.danger { color: var(--danger); }
+  .text-tab-action.danger:hover { background: rgba(239,83,80,0.1); }
+  .add-text-btn { width: 100%; height: 34px; border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-muted); font-size: 12px; cursor: pointer; text-align: center; border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
   .add-text-btn:hover { color: var(--accent); border-color: var(--accent); }
   .hint-text { font-size: 9px; color: var(--text-muted); margin-top: 6px; display: block; line-height: 1.4; }
   .hint-inline { font-size: 9px; color: var(--text-muted); text-transform: none; letter-spacing: 0; opacity: 0.6; }
