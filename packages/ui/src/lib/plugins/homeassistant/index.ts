@@ -36,7 +36,13 @@ export const haPluginDef: PluginDef = {
   settingsComponent: HASettings as any,
   actions: [HA_SERVICE_ACTION, HA_CUSTOM_ACTION],
   actionExecutors: {
-    "ha-service": async (settings) => { await ha.callFromSettings(settings); },
+    "ha-service": async (settings) => {
+      try {
+        await ha.callFromSettings(settings);
+      } catch (e) {
+        console.error("[HA] Service call failed:", e, settings);
+      }
+    },
     "ha-custom": async (settings) => {
       if (settings.ha_custom_json) {
         try {
