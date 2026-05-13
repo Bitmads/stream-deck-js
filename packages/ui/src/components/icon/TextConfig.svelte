@@ -90,13 +90,16 @@
       </label>
       {#if config.stroke}
         <div class="tc-row">
+          <div class="tc-field" style="flex:0 0 34px;">
+            <span class="tc-label">Color</span>
+            <input type="color" value={config.stroke.color} style="width:34px; height:var(--input-h,34px); border:1px solid var(--border); border-radius:var(--radius-sm); padding:2px; background:var(--bg-surface); cursor:pointer;" oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
+          </div>
           <div class="tc-field" style="flex:1;">
-            <div class="tc-color">
-              <input type="color" value={config.stroke.color} oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
-              <input type="text" value={config.stroke.color} oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
-            </div>
+            <span class="tc-label">Hex</span>
+            <input type="text" value={config.stroke.color} oninput={(e) => update({ stroke: { ...config.stroke!, color: (e.target as HTMLInputElement).value } })} />
           </div>
           <div class="tc-field" style="flex:0 0 60px;">
+            <span class="tc-label">Width</span>
             <input type="number" value={config.stroke.width} min="1" max="10" oninput={(e) => update({ stroke: { ...config.stroke!, width: Number((e.target as HTMLInputElement).value) } })} />
           </div>
         </div>
