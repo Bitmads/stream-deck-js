@@ -11,6 +11,7 @@ import {
   legacyDeviceConfig, serializeProfile,
 } from "../utils/profile";
 import { setDefaultVarLookup } from "../utils/render-key";
+import { wrapEncoderValue } from "../utils/encoder";
 import { isIgnoredWindow, pickTriggerScene } from "../utils/window-trigger";
 
 // Persisted model types live in ../types/profile (importable from Node); re-exported for existing imports.
@@ -1120,7 +1121,8 @@ class AppStore {
     if (!scene || !cfg) return;
     const { value: cur, min, max } = this.encoderResolved(cfg);
     const step = Number(cfg.step) || 1;
-    const newVal = Math.max(min, Math.min(max, cur + delta * step));
+    const newVal = cfg.wrap ? wrapEncoderValue(cur, delta * step, min, max, step)
+      : Math.max(min, Math.min(max, cur + delta * step));
 
     const varName = tpl.extractVarName(cfg.value);
     if (varName) {

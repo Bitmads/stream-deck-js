@@ -4,7 +4,7 @@
 import type {
   ActionDef, EncoderConfig, IconConfig, KeyAssignment, Scene, StripItem, TextConfig,
 } from "../../ui/src/lib/types/profile.ts";
-import { TEMPLATE_RE, isKnownFilter, isUsableColor } from "../../ui/src/lib/utils/template.ts";
+import { walkTemplates, NESTED_MARK, isKnownFilter, isUsableColor } from "../../ui/src/lib/utils/template.ts";
 import { cloneJson, normalizeProfile } from "../../ui/src/lib/utils/profile.ts";
 import { parseSteps } from "../../ui/src/lib/plugins/multi-action/steps.ts";
 import { ZERO_WHEN_NULL_ATTRS } from "../../ui/src/lib/plugins/homeassistant/mapping.ts";
@@ -74,23 +74,19 @@ function hasUnescaped(s: string, ch: string): boolean {
 /** Check template syntax in one string (filters from template.ts, map/replace argument pitfalls). */
 export function checkTemplateString(s: string, path: string, issues: Issues): void {
   if (!s.includes("{{")) return;
-  const sticky = new RegExp(TEMPLATE_RE.source, "y");
-  let i = s.indexOf("{{");
-  while (i >= 0) {
-    sticky.lastIndex = i;
-    const m = sticky.exec(s);
-    if (!m) {
-      issues.error(path, `Template at offset ${i} is not closed by "}}" or contains "}" (an expression cannot contain "}"): ${JSON.stringify(s.slice(i, i + 40))}`);
-      return;
-    }
-    checkExpression(m[1], path, issues);
-    i = s.indexOf("{{", i + m[0].length);
+  const exprs: string[] = [];
+  if (!walkTemplates(s, (expr) => exprs.push(expr))) {
+    issues.error(path, `Template is not closed by "}}": ${JSON.stringify(s.slice(s.lastIndexOf("{{"), s.lastIndexOf("{{") + 40))}`);
+    return;
   }
+  for (const expr of exprs) checkExpression(expr, path, issues);
 }
 
-function checkExpression(expr: string, path: string, issues: Issues): void {
+function checkExpression(rawExpr: string, path: string, issues: Issues): void {
+  // Nested templates were evaluated first; show them as "{{…}}" in messages.
+  const expr = rawExpr.split(NESTED_MARK).join("{{…}}");
   const show = `{{${expr}}}`;
-  if (expr.includes("{")) issues.error(path, `"{" inside template expression ${show}`);
+  if (/[{}]/.test(rawExpr.split(NESTED_MARK).join(""))) issues.error(path, `Stray "{" or "}" inside template expression ${show}`);
   const parts = expr.split("|");
   const name = parts[0].trim().replace(/^\$/, "").trim();
   if (!name) issues.error(path, `Template ${show} has no variable name`);

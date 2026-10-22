@@ -102,6 +102,7 @@ function normalizeEncoder(v: unknown, path: string): EncoderConfig {
   enc.max = v.max === undefined || v.max === null ? "100" : settingString(v.max);
   const step = Number(v.step);
   enc.step = Number.isFinite(step) && step !== 0 ? step : 1;
+  if (v.wrap !== undefined) enc.wrap = v.wrap === true;
   return enc;
 }
 

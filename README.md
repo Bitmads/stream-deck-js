@@ -57,7 +57,8 @@ Variables are key-value strings. Templates work in key and strip text, text/back
 
 **Syntax:** `{{$variable.name}}` or `{{$variable.name|filter}}`
 
-- The `$` is optional. The expression cannot contain `}`, and filters are separated by `|`.
+- The `$` is optional. An expression ends at the first `}}`, and filters are separated by `|`.
+- Templates nest, innermost first: `{{$stock.{{$deck.pos|map:0=BTC:1=NVDA}}.price}}` picks the variable by another variable. Substituted values are never re-parsed as templates.
 - A variable that is not set renders as an empty string; filters are skipped while there is no value. Use `default:` to show something else: `{{$temp|round|default:--}}` (also used when the value is empty).
 - Numeric filters on non-numeric input give an empty string (never `NaN` or `0`).
 - For older profiles, a segment that is not a filter name is used as a fallback text when the variable is unset (`{{$x|N/A}}`).

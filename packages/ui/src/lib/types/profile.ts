@@ -53,6 +53,8 @@ export interface EncoderConfig {
   min: string;    // number or {{$var}}
   max: string;    // number or {{$var}}
   step: number;
+  /** Rotating past max continues at min (and below min at max) instead of stopping. */
+  wrap?: boolean;
 }
 
 export interface StripBar {

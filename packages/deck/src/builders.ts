@@ -258,6 +258,8 @@ export interface EncoderOptions {
   min?: number | string;
   max?: number | string;
   step?: number;
+  /** Rotating past max continues at min (and vice versa), e.g. for scrolling lists. */
+  wrap?: boolean;
 }
 
 export function encoder(opts: EncoderOptions = {}): EncoderConfig {
@@ -273,6 +275,7 @@ export function encoder(opts: EncoderOptions = {}): EncoderConfig {
     min: String(opts.min ?? 0),
     max: String(opts.max ?? 100),
     step: opts.step ?? 1,
+    ...(opts.wrap ? { wrap: true } : {}),
   };
 }
 

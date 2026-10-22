@@ -147,7 +147,7 @@ designed at 96 px and scaled up.
 
 | Builder | Result |
 |---|---|
-| `encoder({ press?, rotate?, label?, value?, min?, max?, step? })` | `EncoderConfig`. `value`/`min`/`max` are stored as strings and can be templates. |
+| `encoder({ press?, rotate?, label?, value?, min?, max?, step?, wrap? })` | `EncoderConfig`. `value`/`min`/`max` are stored as strings and can be templates. `wrap: true` continues at `min` after `max` (and vice versa), e.g. to scroll a list bound to a local variable. |
 | `haDial(entity, { control?, label?, press?, min?, max?, step? })` | Bound to an HA attribute. The default control comes from the domain, and press defaults to `<domain>.toggle`. |
 
 | Control | Domain (default for) | Service / attr | Range, step |

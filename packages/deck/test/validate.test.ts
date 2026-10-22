@@ -74,7 +74,9 @@ describe("validateDeck", () => {
     expect(errors(t("{{$x|map:12\\:00=noon:*=other}}"))).toEqual([]);
     expectError(t("{{$x|map:a=b|c:*=d}}"), /"\|" inside the map argument/);
     expectError(t("{{$x|upper"), /not closed/);
-    expectError(t("{{$x|map:a=}b}}"), /not closed|contains "}"/);
+    expectError(t("{{$x|map:a=}b}}"), /Stray "\{" or "\}"/);
+    expect(t("{{$stock.{{$pos|default:0|map:0=BTC:1=NVDA}}.price|default:--}}")).toEqual([]);
+    expectError(t("{{$stock.{{$pos|bogus:x}}.price"), /not closed/);
     expectError(t("{{$x|replace:/[/=y}}"), /Invalid regex/);
     expectError(t("{{|upper}}"), /no variable name/);
   });

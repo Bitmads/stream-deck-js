@@ -220,3 +220,38 @@ describe("shell quoting", () => {
     expect(resolveTemplate("echo {{$missing}}", vars({}), { transform: shellQuote })).toBe("echo ''");
   });
 });
+
+describe("nested templates", () => {
+  const stocks = {
+    "deck.pos": "1",
+    "stock.BTC.price": "67000", "stock.NVDA.price": "181.5",
+  };
+
+  it("builds a variable name from another variable", () => {
+    expect(r("{{$stock.{{$deck.pos|map:0=BTC:1=NVDA}}.price}}", stocks)).toBe("181.5");
+    expect(r("{{$stock.{{$deck.pos|map:0=BTC:1=NVDA}}.price}}", { ...stocks, "deck.pos": "0" })).toBe("67000");
+  });
+
+  it("uses defaults at both levels", () => {
+    expect(r("{{$stock.{{$deck.pos|default:0|map:0=BTC:1=NVDA}}.price|default:--}}", { "stock.BTC.price": "1" })).toBe("1");
+    expect(r("{{$stock.{{$deck.pos|map:0=BTC}}.price|default:--}}", { "deck.pos": "9" })).toBe("--");
+  });
+
+  it("never re-scans substituted values", () => {
+    expect(r("{{$a}}", { a: "{{$secret}}", secret: "x" })).toBe("{{$secret}}");
+    expect(r("{{$p.{{$a}}}}", { a: "{{$secret}}", secret: "x" })).toBe("");
+  });
+
+  it("keeps unclosed templates literal and still resolves the rest", () => {
+    expect(r("{{$a}} {{$b", { a: "1", b: "2" })).toBe("1 {{$b");
+  });
+
+  it("applies the transform only to outermost values", () => {
+    const out = resolveTemplate("echo {{$stock.{{$s}}.p}}", vars({ s: "X", "stock.X.p": "a b" }), { transform: shellQuote });
+    expect(out).toBe("echo 'a b'");
+  });
+
+  it("extractVariableNames lists only statically known names", () => {
+    expect(extractVariableNames("{{$stock.{{$deck.pos|map:0=BTC}}.price}} {{$x}}")).toEqual(["deck.pos", "x"]);
+  });
+});

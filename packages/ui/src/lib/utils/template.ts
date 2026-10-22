@@ -1,6 +1,8 @@
 // Pure template resolution: {{$name|filter|filter:arg}}.
 //
-// - The `$` before the name is optional. The expression cannot contain `}` and is split on `|`.
+// - The `$` before the name is optional. An expression ends at the first `}}` and is split on `|`.
+// - Templates nest, innermost first: `{{$stock.{{$deck.sym}}.price}}` builds the variable name from
+//   another variable (substituted values are never re-scanned).
 // - A variable that is undefined or "" is "missing". Filters are skipped while there is no value;
 //   `default:<text>` supplies a value (also replaces an empty filter result), and a segment that is not
 //   a known filter is treated as a legacy fallback literal (`{{$x|N/A}}`). Otherwise a missing
@@ -11,8 +13,6 @@
 // No Svelte or Tauri imports: usable from Node tooling and unit tests.
 
 export type VarLookup = (name: string) => string | undefined;
-
-export const TEMPLATE_RE = /\{\{([^}]+)\}\}/g;
 
 function num(v: string): number {
   const t = v.trim();
@@ -191,12 +191,49 @@ export interface ResolveResult { text: string; missing: boolean; }
 /** Resolve all templates in `text`, reporting whether any referenced variable was missing. */
 export function resolveTemplateDetailed(text: string, lookup: VarLookup, opts: ResolveOptions = {}): ResolveResult {
   let missing = false;
-  const out = text.replace(new RegExp(TEMPLATE_RE.source, "g"), (_m, expr: string) => {
+  const out = scanTemplates(text, (expr, depth) => {
     const r = evaluateExpression(expr, lookup);
     if (r.missing) missing = true;
-    return opts.transform ? opts.transform(r.value) : r.value;
+    // Only the outermost value is final output; nested values become part of the outer expression.
+    return depth === 0 && opts.transform ? opts.transform(r.value) : r.value;
   });
   return { text: out, missing };
+}
+
+/** Marks where a nested template sat inside an expression passed to walkTemplates(). */
+export const NESTED_MARK = "\u0001";
+
+/**
+ * Scan `text` for templates, innermost first: `{{$stock.{{$sym}}.price}}` evaluates `$sym`, splices
+ * its value into the outer expression, then evaluates that. Substituted values are never re-scanned,
+ * so a variable whose value contains "{{" cannot pull in other variables. An unclosed "{{" stays literal.
+ */
+function scanTemplates(text: string, onExpr: (expr: string, depth: number) => string): string {
+  const stack: string[] = [];
+  let buf = "";
+  let i = 0;
+  while (i < text.length) {
+    if (text.startsWith("{{", i)) { stack.push(buf); buf = ""; i += 2; continue; }
+    if (stack.length && text.startsWith("}}", i)) {
+      const expr = buf;
+      buf = stack.pop()!;
+      buf += onExpr(expr, stack.length);
+      i += 2;
+      continue;
+    }
+    buf += text[i++];
+  }
+  while (stack.length) buf = stack.pop()! + "{{" + buf;
+  return buf;
+}
+
+/**
+ * Visit every template expression, innermost first. Nested templates inside an expression are
+ * replaced by NESTED_MARK (a value only known at render time). Returns false if a "{{" is unclosed.
+ */
+export function walkTemplates(text: string, onExpr: (expr: string) => void): boolean {
+  // Every "{{" left in the output is an opener that was never closed.
+  return !scanTemplates(text, (expr) => { onExpr(expr); return NESTED_MARK; }).includes("{{");
 }
 
 export function resolveTemplate(text: string, lookup: VarLookup, opts: ResolveOptions = {}): string {
@@ -213,11 +250,11 @@ export function hasTemplates(text: string | undefined | null): boolean {
 export function extractVariableNames(text: string | undefined | null): string[] {
   if (typeof text !== "string" || !text.includes("{{")) return [];
   const names: string[] = [];
-  const re = new RegExp(TEMPLATE_RE.source, "g");
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    names.push(match[1].trim().split("|")[0].trim().replace(/^\$/, "").trim());
-  }
+  walkTemplates(text, (expr) => {
+    const name = expr.trim().split("|")[0].trim().replace(/^\$/, "").trim();
+    // A name built from a nested template is only known at render time.
+    if (!name.includes(NESTED_MARK)) names.push(name);
+  });
   return names;
 }
 
