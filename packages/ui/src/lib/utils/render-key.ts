@@ -1,6 +1,42 @@
-import type { KeyAssignment, IconConfig } from "../stores/editor.svelte";
-import { resolveTemplate } from "../stores/variables.svelte";
+// Key rendering, shared by the device sync (hardware) and the editor preview.
+//
+// Rendering is split in two steps:
+//   1. resolveKeyInputs(): pure — resolves every templated field (background, image URL, conditional
+//      icon + color, text + colors) and applies the runtime override. Only the variables a key uses are
+//      read, so in a reactive context the key depends on exactly those variables.
+//   2. renderResolvedKey(): draws the resolved inputs on a canvas and returns a JPEG data URL.
+// keyFingerprint() of the resolved inputs lets callers skip re-rendering/re-sending unchanged keys.
+//
+// Coordinates (font size, icon size, absolute text x/y) are in "design" pixels: the canvas size the
+// editor has always used, min(native, 96). Rendering at the native size scales the drawing, so a Plus
+// key (120 px) looks exactly like its 96 px preview, only sharper.
 
+import type { KeyAssignment, IconConfig, TextConfig, RuntimeOverride } from "../types/profile";
+import { resolveTemplate, resolveColor, resolveTemplateDetailed, type VarLookup } from "./template";
+import { drawTextLayer, drawImageFit, type ResolvedTextLayer } from "./draw-text";
+import { iconToDataUrl } from "./icon-svg";
+import { loadImage, isFetchableUrl } from "./image-cache";
+import { ensureFontLoaded, isCustomFontFamily } from "./font";
+
+/** Largest design canvas used by the editor; native key sizes above it are scaled up from it. */
+export const MAX_DESIGN_KEY_SIZE = 96;
+
+export function keyDesignSize(nativeSize: number): number {
+  return Math.min(nativeSize > 0 ? nativeSize : 72, MAX_DESIGN_KEY_SIZE);
+}
+
+let defaultLookup: VarLookup = () => undefined;
+
+/** The store installs its variable lookup here so callers can omit `lookup`. */
+export function setDefaultVarLookup(lookup: VarLookup) {
+  defaultLookup = lookup;
+}
+
+export function getDefaultVarLookup(): VarLookup {
+  return defaultLookup;
+}
+
+/** Pick the icon to show: first conditional icon whose resolved variable equals its value, else the first unconditional one. */
 export function resolveActiveIcon(
   assignment: { icon?: IconConfig; icons?: IconConfig[] },
   resolve: (t: string) => string
@@ -16,246 +52,211 @@ export function resolveActiveIcon(
   return icons.find(ic => !ic.variable && ic.svgBody) ?? (icons[0]?.svgBody ? icons[0] : undefined);
 }
 
-/**
- * Render complete key image on canvas.
- * Layers: bg color → bg image → SVG icon → text
- * Returns base64 JPEG data URL.
- */
-export async function renderKeyToDataUrl(
+export interface ResolvedKeyIcon { svgBody: string; viewBox: string; color: string; size: number; }
+
+export interface ResolvedKeyInputs {
+  background: string;
+  /** Data URL or complete http(s) URL; "" for none. */
+  image: string;
+  imageFit: "fill" | "cover" | "contain" | "none";
+  icon: ResolvedKeyIcon | null;
+  texts: ResolvedTextLayer[];
+  flash: "ok" | "alert" | null;
+  state: number | null;
+}
+
+function defaultTitleLayer(): ResolvedTextLayer {
+  return {
+    text: "", fontFamily: "sans-serif", fontSize: 16, fontWeight: "bold", fontStyle: "normal",
+    color: "#ffffff", hAlign: "center", vAlign: "middle", anchor: "center", useAbsolutePos: false,
+    wrap: "word", stroke: { color: "#000000", width: 3 },
+  };
+}
+
+function resolveTextLayer(t: TextConfig, lookup: VarLookup): ResolvedTextLayer {
+  return {
+    text: resolveTemplate(t.text, lookup),
+    fontFamily: t.fontFamily || "sans-serif",
+    fontSize: Number(t.fontSize) > 0 ? Number(t.fontSize) : 14,
+    fontWeight: t.fontWeight, fontStyle: t.fontStyle,
+    color: resolveColor(t.color || "#ffffff", lookup, "#ffffff"),
+    hAlign: t.hAlign, vAlign: t.vAlign, anchor: t.anchor,
+    useAbsolutePos: !!t.useAbsolutePos, x: t.x, y: t.y,
+    wrap: t.wrap,
+    shadow: t.shadow ? { ...t.shadow, color: resolveColor(t.shadow.color, lookup, "#000000") } : undefined,
+    stroke: t.stroke ? { ...t.stroke, color: resolveColor(t.stroke.color, lookup, "#000000") } : undefined,
+  };
+}
+
+/** Resolve a templated image URL; "" when a variable is missing or the URL is incomplete. */
+export function resolveImageUrl(url: string | undefined, lookup: VarLookup): string {
+  if (!url) return "";
+  const r = resolveTemplateDetailed(url, lookup);
+  if (r.missing) return "";
+  const u = r.text.trim();
+  if (!u) return "";
+  if (u.startsWith("data:")) return u;
+  return isFetchableUrl(u) ? u : "";
+}
+
+export function keyTextLayers(assignment: KeyAssignment): TextConfig[] {
+  return assignment.texts?.length ? assignment.texts : (assignment.text ? [assignment.text] : []);
+}
+
+/** Resolve everything that affects a key's pixels. Pure; reads only the variables the key uses. */
+export function resolveKeyInputs(
   assignment: KeyAssignment,
-  width: number = 72,
-  height?: number
-): Promise<string> {
-  const w = width;
-  const h = height ?? width;
-  const size = Math.min(w, h); // for icon sizing
+  lookup: VarLookup = defaultLookup,
+  override?: RuntimeOverride | null,
+): ResolvedKeyInputs {
+  const resolve = (t: string) => resolveTemplate(t, lookup);
+
+  const background = resolveColor(assignment.backgroundColor || "#000000", lookup, "#000000");
+
+  let image = assignment.imageDataUrl || resolveImageUrl(assignment.imageUrl, lookup);
+  if (override?.image) image = override.image;
+
+  const active = resolveActiveIcon(assignment, resolve);
+  const icon: ResolvedKeyIcon | null = active ? {
+    svgBody: active.svgBody, viewBox: active.viewBox,
+    color: resolveColor(active.color || "#ffffff", lookup, "#ffffff"),
+    size: Number(active.size) > 0 ? Number(active.size) : 48,
+  } : null;
+
+  const layers = keyTextLayers(assignment).filter(t => t && !t.hidden);
+  let texts = layers.map(t => resolveTextLayer(t, lookup));
+  if (override?.title !== undefined) {
+    if (texts.length > 0) texts = [{ ...texts[0], text: override.title }, ...texts.slice(1)];
+    else texts = [{ ...defaultTitleLayer(), text: override.title }];
+  }
+  texts = texts.filter(t => t.text !== "");
+
+  return {
+    background,
+    image,
+    imageFit: assignment.imageFit || "fill",
+    icon,
+    texts,
+    flash: override?.flash ?? null,
+    state: override?.state ?? null,
+  };
+}
+
+/** Compact, stable fingerprint of any JSON-serializable value (two FNV-1a style 32-bit hashes + length). */
+export function fingerprintOf(value: unknown): string {
+  const s = JSON.stringify(value);
+  let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193);
+    h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+  }
+  return (h1 >>> 0).toString(36) + "." + (h2 >>> 0).toString(36) + "." + s.length.toString(36);
+}
+
+/** Stable fingerprint of a key's resolved render inputs at a given output size. */
+export function keyFingerprint(inputs: ResolvedKeyInputs, size: number): string {
+  return fingerprintOf([size, inputs]);
+}
+
+export interface RenderResult {
+  dataUrl: string;
+  /** True when an image or icon could not be loaded (callers may retry later). */
+  incomplete: boolean;
+}
+
+function drawFlash(ctx: CanvasRenderingContext2D, kind: "ok" | "alert", d: number) {
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, 0, d, d);
+  const cx = d / 2, cy = d / 2, r = d * 0.28;
+  ctx.lineWidth = Math.max(3, d * 0.06);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (kind === "ok") {
+    ctx.fillStyle = "#2ecc71";
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.45, cy + r * 0.02);
+    ctx.lineTo(cx - r * 0.1, cy + r * 0.38);
+    ctx.lineTo(cx + r * 0.5, cy - r * 0.35);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#f1c40f";
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r * 1.1, cy + r * 0.85);
+    ctx.lineTo(cx - r * 1.1, cy + r * 0.85);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "#000000";
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.45); ctx.lineTo(cx, cy + r * 0.25); ctx.stroke();
+    ctx.fillStyle = "#000000";
+    ctx.beginPath(); ctx.arc(cx, cy + r * 0.55, ctx.lineWidth * 0.55, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Draw resolved inputs; `size` is the output pixel size (native key size for hardware). */
+export async function renderResolvedKey(inputs: ResolvedKeyInputs, size: number, designSize = keyDesignSize(size)): Promise<RenderResult> {
+  let incomplete = false;
+
+  // Load everything first, then draw synchronously so the drawing is atomic.
+  let bgImg: HTMLImageElement | null = null;
+  if (inputs.image) {
+    try { bgImg = await loadImage(inputs.image); } catch { incomplete = true; }
+  }
+  let iconImg: HTMLImageElement | null = null;
+  if (inputs.icon) {
+    try { iconImg = await loadImage(iconToDataUrl(inputs.icon, inputs.icon.color, inputs.icon.size * (size / designSize))); }
+    catch (e) { incomplete = true; console.error("Failed to render SVG icon:", e); }
+  }
+  for (const t of inputs.texts) {
+    if (isCustomFontFamily(t.fontFamily)) await ensureFontLoaded(t.fontFamily, t.fontWeight, t.fontStyle);
+  }
+
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = size;
+  canvas.height = size;
   const ctx = canvas.getContext("2d")!;
+  const scale = size / designSize;
+  ctx.scale(scale, scale);
+  const d = designSize;
 
-  // Layer 1: Background color (supports variables like {{$ha.light.color}})
-  const bgColor = resolveTemplate(assignment.backgroundColor || "#000000");
-  ctx.fillStyle = bgColor.startsWith("#") || bgColor.startsWith("rgb") ? bgColor : "#000000";
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = inputs.background;
+  ctx.fillRect(0, 0, d, d);
 
-  // Layer 2: Background image (data URL or remote URL with variable support)
-  const resolvedImgUrl = assignment.imageUrl ? resolveTemplate(assignment.imageUrl) : "";
-  const imgSrc = assignment.imageDataUrl || (resolvedImgUrl && !resolvedImgUrl.includes("{{") ? resolvedImgUrl : "");
-  if (imgSrc) {
-    try {
-      const img = await loadImage(imgSrc);
-      const fit = assignment.imageFit || "fill";
-      if (fit === "fill") {
-        ctx.drawImage(img, 0, 0, w, h);
-      } else if (fit === "cover") {
-        const sc = Math.max(w / img.width, h / img.height);
-        const sw = w / sc, sh = h / sc;
-        ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, 0, 0, w, h);
-      } else if (fit === "contain") {
-        const sc = Math.min(w / img.width, h / img.height);
-        const dw = img.width * sc, dh = img.height * sc;
-        ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-      } else {
-        ctx.drawImage(img, (w - img.width) / 2, (h - img.height) / 2);
-      }
-    } catch {}
+  if (bgImg) drawImageFit(ctx, bgImg, { x: 0, y: 0, w: d, h: d }, inputs.imageFit);
+
+  if (iconImg && inputs.icon) {
+    const s = inputs.icon.size;
+    ctx.drawImage(iconImg, (d - s) / 2, (d - s) / 2, s, s);
   }
 
-  // Layer 3: SVG icon (centered) — resolve conditional icons
-  const activeIcon = resolveActiveIcon(assignment, resolveTemplate);
-  if (activeIcon) {
-    const iconSize = activeIcon.size || 48;
-    const color = activeIcon.color || "#ffffff";
-    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${activeIcon.viewBox}" width="${iconSize}" height="${iconSize}"><style>*{fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}</style>${activeIcon.svgBody}</svg>`;
+  for (const t of inputs.texts) drawTextLayer(ctx, t, { x: 0, y: 0, w: d, h: d }, { padding: 2 });
 
-    try {
-      const svgBase64 = btoa(unescape(encodeURIComponent(svgStr)));
-      const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
-      const img = await loadImage(dataUrl);
-      const x = (w - iconSize) / 2;
-      const y = (h - iconSize) / 2;
-      ctx.drawImage(img, x, y, iconSize, iconSize);
-    } catch (e) {
-      console.error("Failed to render SVG icon:", e);
-    }
-  }
+  if (inputs.flash) drawFlash(ctx, inputs.flash, d);
 
-  // Layer 4: Text layers (ALWAYS on top of everything, with variable resolution)
-  const texts = assignment.texts?.length ? assignment.texts : (assignment.text ? [assignment.text] : []);
-
-  // Ensure custom fonts are loaded before drawing text on canvas
-  const fontFamilies = texts
-    .filter(t => t?.text && !t.hidden && t.fontFamily && !["sans-serif", "serif", "monospace"].includes(t.fontFamily))
-    .map(t => t.fontFamily);
-  for (const family of fontFamilies) {
-    try { await document.fonts.load(`16px "${family}"`); } catch {}
-  }
-
-  for (const t of texts) {
-    if (t?.text && !t.hidden) {
-      const resolved = { ...t, text: resolveTemplate(t.text) };
-      drawText(ctx, resolved, w, h);
-    }
-  }
-
-  return canvas.toDataURL("image/jpeg", 0.92);
+  // Images are always drawn from data URLs (see image-cache), so the canvas is never tainted.
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+  return { dataUrl, incomplete };
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, mode: string): string[] {
-  if (mode === "none" || maxWidth <= 0) return text.split("\n");
-  const result: string[] = [];
-  for (const paragraph of text.split("\n")) {
-    if (mode === "word") {
-      const words = paragraph.split(/(\s+)/);
-      let line = "";
-      for (const word of words) {
-        const test = line + word;
-        if (ctx.measureText(test).width > maxWidth && line.trim()) {
-          result.push(line.trim());
-          line = word.trimStart();
-        } else {
-          line = test;
-        }
-      }
-      if (line.trim()) result.push(line.trim());
-      else if (result.length === 0) result.push("");
-    } else {
-      // char wrap
-      let line = "";
-      for (const ch of paragraph) {
-        if (ctx.measureText(line + ch).width > maxWidth && line) {
-          result.push(line);
-          line = ch;
-        } else {
-          line += ch;
-        }
-      }
-      if (line) result.push(line);
-      else if (result.length === 0) result.push("");
-    }
-  }
-  return result;
+export interface RenderKeyOptions {
+  lookup?: VarLookup;
+  override?: RuntimeOverride | null;
+  /** Design canvas size (defaults to min(size, 96)). */
+  designSize?: number;
 }
 
-function drawText(
-  ctx: CanvasRenderingContext2D,
-  t: {
-    text: string;
-    fontFamily?: string;
-    fontSize: number;
-    fontWeight: string;
-    fontStyle: string;
-    color: string;
-    hAlign: string;
-    vAlign: string;
-    anchor: string;
-    useAbsolutePos: boolean;
-    x?: number;
-    y?: number;
-    wrap?: string;
-    shadow?: { color: string; blur: number; offsetX: number; offsetY: number };
-    stroke?: { color: string; width: number };
-  },
-  canvasW: number,
-  canvasH?: number
-) {
-  const cw = canvasW;
-  const ch = canvasH ?? canvasW;
-  const lineHeight = t.fontSize * 1.2;
-
-  const fontStyle = t.fontStyle === "italic" ? "italic " : "";
-  const fontWeight = t.fontWeight === "bold" ? "bold " : "";
-  const fontFamily = t.fontFamily || "sans-serif";
-  ctx.font = `${fontStyle}${fontWeight}${t.fontSize}px ${fontFamily}`;
-  ctx.fillStyle = t.color;
-
-  const wrapMode = (t as any).wrap || "none";
-  const maxWidth = t.useAbsolutePos ? cw : cw - 4;
-  const lines = wrapText(ctx, t.text, maxWidth, wrapMode);
-  const totalHeight = lines.length * lineHeight;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line && lines.length > 1) continue;
-
-    const lineWidth = ctx.measureText(line).width;
-
-    let x: number;
-    let y: number;
-
-    if (t.useAbsolutePos) {
-      const bx = t.x ?? 0;
-      const by = t.y ?? 0;
-      // Anchor adjusts where the text attaches to the position
-      x = t.anchor === "center" ? bx - lineWidth / 2
-        : t.anchor === "end" ? bx - lineWidth
-        : bx;
-      y = by + i * lineHeight + t.fontSize;
-    } else {
-      // Horizontal: get base X from alignment
-      let bx: number;
-      if (t.hAlign === "left") bx = 2;
-      else if (t.hAlign === "right") bx = cw - 2;
-      else bx = cw / 2;
-
-      // Apply anchor to base X
-      x = t.anchor === "center" ? bx - lineWidth / 2
-        : t.anchor === "end" ? bx - lineWidth
-        : bx;
-
-      // Vertical: get base Y from alignment
-      let by: number;
-      if (t.vAlign === "top") by = 2;
-      else if (t.vAlign === "bottom") by = ch - totalHeight - 2;
-      else by = (ch - totalHeight) / 2;
-
-      y = by + i * lineHeight + t.fontSize;
-    }
-
-    if (t.shadow) {
-      ctx.shadowColor = t.shadow.color;
-      ctx.shadowBlur = t.shadow.blur;
-      ctx.shadowOffsetX = t.shadow.offsetX;
-      ctx.shadowOffsetY = t.shadow.offsetY;
-    }
-    if (t.stroke && t.stroke.width > 0) {
-      ctx.strokeStyle = t.stroke.color;
-      ctx.lineWidth = t.stroke.width;
-      ctx.lineJoin = "round";
-      ctx.strokeText(line, x, y);
-    }
-    ctx.fillText(line, x, y);
-    if (t.shadow) {
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    }
-  }
+/** Render a key assignment to a JPEG data URL at `size` px. */
+export async function renderKey(assignment: KeyAssignment, size: number, opts: RenderKeyOptions = {}): Promise<string> {
+  const inputs = resolveKeyInputs(assignment, opts.lookup ?? defaultLookup, opts.override);
+  return (await renderResolvedKey(inputs, size, opts.designSize ?? keyDesignSize(size))).dataUrl;
 }
 
-import { invoke } from "@tauri-apps/api/core";
-
-const imgUrlCache: Record<string, string> = {};
-
-async function loadImage(src: string): Promise<HTMLImageElement> {
-  let url = src;
-  if (src.startsWith("http://") || src.startsWith("https://")) {
-    if (imgUrlCache[src]) {
-      url = imgUrlCache[src];
-    } else {
-      try {
-        const dataUrl = await invoke<string>("fetch_image_as_data_url", { url: src });
-        imgUrlCache[src] = dataUrl;
-        url = dataUrl;
-      } catch {}
-    }
-  }
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = (e) => reject(e);
-    img.src = url;
-  });
+/** Back-compat wrapper used by the editor preview: render at `width` px using the store's variables. */
+export async function renderKeyToDataUrl(assignment: KeyAssignment, width: number = 72, _height?: number): Promise<string> {
+  return renderKey(assignment, width);
 }
+

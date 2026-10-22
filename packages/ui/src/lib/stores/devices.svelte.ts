@@ -8,3 +8,4 @@ export function isLoading() { return store.deviceLoading; }
 export function getError() { return store.deviceError; }
 export async function refreshDevices() { return store.refreshDevices(); }
 export async function selectDevice(device: Parameters<typeof store.selectDevice>[0]) { return store.selectDevice(device); }
+export function getConnectedSerials() { return store.getConnectedSerials(); }

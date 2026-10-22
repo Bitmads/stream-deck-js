@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { ha } from "./client";
 
   let watchSearch = $state("");
@@ -8,26 +9,39 @@
 
   let haUrl = $state("");
   let haToken = $state("");
-  let haConnected = $state(false);
-  let haEntityCount = $state(0);
+  let haConnected = $state(ha.connected);
+  let haError = $state<string | null>(ha.lastError);
+  let haEntityCount = $state(ha.getEntities().length);
+  let saveError = $state<string | null>(null);
+
+  const unsubscribe = ha.onStatus((status) => {
+    haConnected = status.connected;
+    haError = status.error;
+    haEntityCount = ha.getEntities().length;
+    refreshWatched();
+  });
+  onDestroy(unsubscribe);
 
   async function loadHAConfig() {
     const config = await ha.loadConfig();
-    if (config) { haUrl = config.url; haToken = config.token; }
+    if (config) { haUrl = config.url ?? ""; haToken = config.token ?? ""; }
     haConnected = ha.connected;
     haEntityCount = ha.getEntities().length;
     refreshWatched();
   }
 
   async function handleHAConnect() {
-    await ha.saveConfig(haUrl, haToken);
+    saveError = null;
+    try {
+      await ha.saveConfig(haUrl, haToken);
+    } catch (e) {
+      saveError = `Could not save settings: ${e instanceof Error ? e.message : String(e)}`;
+    }
     ha.connect(haUrl, haToken);
-    setTimeout(() => { haConnected = ha.connected; haEntityCount = ha.getEntities().length; }, 2000);
   }
 
   function handleHADisconnect() {
     ha.disconnect();
-    haConnected = false;
   }
 
   loadHAConfig();
@@ -37,8 +51,9 @@
 <p class="hint">Connect to Home Assistant for real-time service calls via WebSocket. Much faster than HTTP webhooks.</p>
 
 <div class="ha-status" class:connected={haConnected}>
-  {haConnected ? `Connected (${haEntityCount} entities)` : 'Not connected'}
+  {haConnected ? `Connected (${haEntityCount} entities)` : (haError ?? 'Not connected')}
 </div>
+{#if saveError}<div class="ha-status">{saveError}</div>{/if}
 
 <div class="ha-fields">
   <input class="input" type="text" bind:value={haUrl} placeholder="https://homeassistant.example.com" />

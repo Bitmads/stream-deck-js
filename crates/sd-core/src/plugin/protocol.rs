@@ -1,62 +1,23 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Messages sent FROM the Stream Deck app TO plugins.
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "event")]
-pub enum PluginEvent {
-    #[serde(rename = "keyDown")]
-    KeyDown { action: String, context: String, device: String, payload: KeyPayload },
-    #[serde(rename = "keyUp")]
-    KeyUp { action: String, context: String, device: String, payload: KeyPayload },
-    #[serde(rename = "willAppear")]
-    WillAppear { action: String, context: String, device: String, payload: AppearPayload },
-    #[serde(rename = "willDisappear")]
-    WillDisappear { action: String, context: String, device: String, payload: AppearPayload },
-    #[serde(rename = "didReceiveSettings")]
-    DidReceiveSettings { action: String, context: String, device: String, payload: SettingsPayload },
-    #[serde(rename = "didReceiveGlobalSettings")]
-    DidReceiveGlobalSettings { payload: GlobalSettingsPayload },
-    #[serde(rename = "deviceDidConnect")]
-    DeviceDidConnect { device: String, #[serde(rename = "deviceInfo")] device_info: DeviceInfoPayload },
-    #[serde(rename = "deviceDidDisconnect")]
-    DeviceDidDisconnect { device: String },
-    #[serde(rename = "propertyInspectorDidAppear")]
-    PropertyInspectorDidAppear { action: String, context: String, device: String },
-    #[serde(rename = "propertyInspectorDidDisappear")]
-    PropertyInspectorDidDisappear { action: String, context: String, device: String },
-}
-
-/// Messages sent FROM plugins TO the Stream Deck app.
+/// Plugin-to-host messages that the host handles itself.
+///
+/// Every other inbound message that carries a `context` (setTitle, setImage,
+/// setState, setSettings, getSettings, showOk, showAlert,
+/// sendToPropertyInspector, setFeedback, setFeedbackLayout, ...) is
+/// forwarded verbatim to the UI, which owns keys, settings and rendering.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "event")]
 pub enum PluginCommand {
-    #[serde(rename = "setTitle")]
-    SetTitle { context: String, payload: SetTitlePayload },
-    #[serde(rename = "setImage")]
-    SetImage { context: String, payload: SetImagePayload },
-    #[serde(rename = "setState")]
-    SetState { context: String, payload: SetStatePayload },
-    #[serde(rename = "setSettings")]
-    SetSettings { context: String, payload: Value },
-    #[serde(rename = "getSettings")]
-    GetSettings { context: String },
-    #[serde(rename = "setGlobalSettings")]
-    SetGlobalSettings { context: String, payload: Value },
-    #[serde(rename = "getGlobalSettings")]
-    GetGlobalSettings { context: String },
-    #[serde(rename = "showAlert")]
-    ShowAlert { context: String },
-    #[serde(rename = "showOk")]
-    ShowOk { context: String },
     #[serde(rename = "openUrl")]
     OpenUrl { payload: OpenUrlPayload },
     #[serde(rename = "logMessage")]
     LogMessage { payload: LogPayload },
-    #[serde(rename = "sendToPropertyInspector")]
-    SendToPropertyInspector { action: String, context: String, payload: Value },
-    #[serde(rename = "switchToProfile")]
-    SwitchToProfile { context: String, device: String, payload: SwitchProfilePayload },
+    #[serde(rename = "setGlobalSettings")]
+    SetGlobalSettings { payload: Value },
+    #[serde(rename = "getGlobalSettings")]
+    GetGlobalSettings {},
     // Variables (Open Stream Deck extension)
     #[serde(rename = "setVariable")]
     SetVariable { payload: VariablePayload },
@@ -69,76 +30,25 @@ pub enum PluginCommand {
     RegisterPropertyInspector { uuid: String },
 }
 
+impl PluginCommand {
+    /// Events parsed into [`PluginCommand`]; anything else is not host-handled.
+    pub const HOST_EVENTS: &'static [&'static str] = &[
+        "openUrl",
+        "logMessage",
+        "setGlobalSettings",
+        "getGlobalSettings",
+        "setVariable",
+        "getVariable",
+        "registerPlugin",
+        "registerPropertyInspector",
+    ];
+
+    pub fn is_host_event(event: &str) -> bool {
+        Self::HOST_EVENTS.contains(&event)
+    }
+}
+
 // ─── Payload types ───
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyPayload {
-    pub settings: Value,
-    pub coordinates: Coordinates,
-    #[serde(rename = "isInMultiAction")]
-    pub is_in_multi_action: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppearPayload {
-    pub settings: Value,
-    pub coordinates: Coordinates,
-    pub controller: String,
-    pub state: u8,
-    #[serde(rename = "isInMultiAction")]
-    pub is_in_multi_action: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SettingsPayload {
-    pub settings: Value,
-    pub coordinates: Coordinates,
-    #[serde(rename = "isInMultiAction")]
-    pub is_in_multi_action: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GlobalSettingsPayload {
-    pub settings: Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Coordinates {
-    pub column: u8,
-    pub row: u8,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceInfoPayload {
-    pub name: String,
-    pub r#type: u8,
-    pub size: DeviceSize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceSize {
-    pub columns: u8,
-    pub rows: u8,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SetTitlePayload {
-    pub title: Option<String>,
-    pub target: Option<u8>,
-    pub state: Option<u8>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SetImagePayload {
-    pub image: Option<String>,
-    pub target: Option<u8>,
-    pub state: Option<u8>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SetStatePayload {
-    pub state: u8,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenUrlPayload {
@@ -148,12 +58,6 @@ pub struct OpenUrlPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogPayload {
     pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SwitchProfilePayload {
-    pub profile: String,
-    pub page: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,7 +71,7 @@ pub struct GetVariablePayload {
     pub name: String,
 }
 
-/// Registration info sent to plugins on startup.
+/// Registration info passed to plugins on startup (`-info`).
 #[derive(Debug, Clone, Serialize)]
 pub struct RegistrationInfo {
     pub application: AppInfo,
@@ -198,4 +102,27 @@ pub struct RegistrationDevice {
     pub name: String,
     pub size: DeviceSize,
     pub r#type: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceSize {
+    pub columns: u8,
+    pub rows: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_host_commands() {
+        let c: PluginCommand = serde_json::from_str(r#"{"event":"registerPlugin","uuid":"com.x"}"#).unwrap();
+        assert!(matches!(c, PluginCommand::RegisterPlugin { uuid } if uuid == "com.x"));
+        let c: PluginCommand = serde_json::from_str(r#"{"event":"getGlobalSettings","context":"com.x"}"#).unwrap();
+        assert!(matches!(c, PluginCommand::GetGlobalSettings {}));
+        let c: PluginCommand = serde_json::from_str(r#"{"event":"setGlobalSettings","context":"com.x","payload":{"a":1}}"#).unwrap();
+        assert!(matches!(c, PluginCommand::SetGlobalSettings { payload } if payload["a"] == 1));
+        assert!(PluginCommand::is_host_event("setVariable"));
+        assert!(!PluginCommand::is_host_event("setTitle"));
+    }
 }

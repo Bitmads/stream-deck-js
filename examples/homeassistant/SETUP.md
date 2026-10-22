@@ -10,7 +10,7 @@ The app connects directly to Home Assistant over WebSocket. This gives you real-
 
 ### Step 1: Create a Long-Lived Access Token in HA
 
-1. Open your Home Assistant UIclaude 
+1. Open your Home Assistant UI
 2. Click your profile icon (bottom left of the sidebar)
 3. Scroll to **Long-Lived Access Tokens**
 4. Click **Create Token**, name it "Open Stream Deck"
@@ -25,7 +25,7 @@ The app connects directly to Home Assistant over WebSocket. This gives you real-
 3. Click **Connect**
 4. The status indicator turns green and shows the entity count (e.g. "Connected (247 entities)")
 
-The connection persists across app restarts and auto-reconnects after 5 seconds if dropped.
+The connection persists across app restarts. If it drops, the app reconnects with a backoff from 1 to 10 seconds; an invalid token stops reconnecting until you press **Connect** again, and the error is shown in Settings.
 
 ### Step 3: Watch Entities
 
@@ -47,6 +47,8 @@ For example, watching `light.living_room` creates these variables:
 | `ha.light.living_room.max_color_temp_kelvin` | `6500` |
 
 Use these in any key text layer, encoder binding, or strip item: `{{$ha.light.living_room.brightness}}`
+
+Variables exist only for watched entities. Object-valued attributes are skipped and lists are joined with `, `. Level attributes that Home Assistant drops while the entity is off (`brightness`, `volume_level`, `percentage`, `current_position`, `current_tilt_position`) become `0`; any other attribute that disappears becomes an empty string. Picking a control in the HA Service Call action adds the entity to the watch list automatically.
 
 ### Step 4: Configure Actions
 
@@ -88,12 +90,12 @@ Controls detected automatically per domain:
 | Domain | Control | Service | Attribute | Range |
 |--------|---------|---------|-----------|-------|
 | light | Brightness | `turn_on` | `brightness` | 0-255 (step 5) |
-| light | Color Temperature | `turn_on` | `color_temp_kelvin` | min-max from entity |
+| light | Color Temperature | `turn_on` | `color_temp_kelvin` | entity min/max (default 2000-6500), step 100 |
 | media_player | Volume | `volume_set` | `volume_level` | 0-1 (step 0.05) |
-| climate | Temperature | `set_temperature` | `temperature` | min-max from entity |
-| cover | Position | `set_cover_position` | `position` | 0-100 (step 5) |
-| fan | Speed | `set_percentage` | `percentage` | 0-100 (step 10) |
-| number/input_number | Value | `set_value` | `value` | min-max from entity |
+| climate | Temperature | `set_temperature` | `temperature` | entity min/max (default 16-30), step `target_temp_step` (default 0.5) |
+| cover | Position | `set_cover_position` | `position` (current value read from `current_position`) | 0-100 (step 5) |
+| fan | Speed | `set_percentage` | `percentage` | 0-100, step `percentage_step` (default 10) |
+| number/input_number | Value | `set_value` | `value` (current value read from the state) | entity min/max/step |
 
 ### Step 6: LCD Touchstrip Setup (Stream Deck+)
 
@@ -112,7 +114,7 @@ The touchstrip can display live data and respond to touch gestures.
 
 #### Tap as slider
 
-Bind the strip item's **tap action** to **HA Service Call** with the brightness attribute. When tapped, the x-coordinate is mapped as a ratio (0-1) across the strip item's width, then scaled to the attribute's min-max range. Tapping the middle of a brightness bar sets brightness to ~128.
+Bind the strip item's **tap action** to **HA Service Call** with the brightness attribute. When tapped, the x-coordinate is mapped as a ratio (0-1) across the strip item's width, scaled to the control's min-max range and snapped to its step, so fractional ranges such as volume 0-1 work. Tapping the middle of a brightness bar sets brightness to about half (130).
 
 #### Long press for toggle
 
@@ -120,7 +122,7 @@ Bind the strip item's **long press action** to **HA Service Call** with service 
 
 #### Swipe to adjust
 
-Bind the strip item's **swipe action** to **HA Service Call** with the brightness attribute. The swipe destination x-coordinate is mapped to the attribute range, so swiping right increases and swiping left decreases.
+Bind the strip item's **swipe action** to **HA Service Call** with the brightness attribute. The swipe destination x-coordinate (`to_ratio`) is mapped to the control's range in the same way.
 
 ### Two-Way Binding
 
@@ -143,13 +145,19 @@ Filters transform variable values for display or color rendering. Use them with 
 | `floor` | Round down | `22.7` | `22` |
 | `ceil` | Round up | `22.1` | `23` |
 | `percent` | Decimal to percentage | `0.75` | `75%` |
+| `round1` | One decimal | `22.66` | `22.7` |
+| `f2c` | Fahrenheit to Celsius | `72.5` | `22.5` |
 | `upper` | Uppercase | `on` | `ON` |
 | `lower` | Lowercase | `ON` | `on` |
+| `map:` | Map values | `on` with `map:on=#f90:*=#000` | `#f90` |
+| `default:` | Value while unset/empty | (unset) with `default:--` | `--` |
+
+The full list is in the main [README](../../README.md#variable-system). A variable that does not exist yet renders as an empty string (or the `default:` value).
 
 Common patterns:
 - Background color from light temp: `{{$ha.light.living_room.color_temp_kelvin|kelvin}}`
 - Background color from RGB light: `{{$ha.light.living_room.rgb_color|rgb}}`
-- Brightness as percentage: use `|round` to drop decimals
+- Show a placeholder until HA has synced: `{{$ha.sensor.outdoor_temp.state|round1|default:--}}`
 - State label: `{{$ha.light.living_room.state|upper}}`
 
 ---
@@ -159,6 +167,8 @@ Common patterns:
 If you cannot use WebSocket (e.g. the deck is on a different network), Home Assistant can push variable updates to the deck's REST API.
 
 ### Step 1: Generate an API Key in Open Stream Deck
+
+An API key is required: without any key the API only answers requests from the PC itself, and Home Assistant gets `403 Forbidden`.
 
 1. Go to **Settings** > **API Keys**
 2. Type a name (e.g. "Home Assistant") and click **Generate Key**
@@ -268,8 +278,11 @@ Mix static text and variables: `Bedroom: {{$ha.sensor.bedroom_temp.state|round}}
 
 ## Security
 
-- API keys protect the REST API at port 8484. Generate them in **Settings** > **API Keys**
-- Keys are stored encrypted in your OS keychain (GNOME Keyring / macOS Keychain / Windows Credential Manager)
+- API keys protect the REST API at port 8484. Generate them in **Settings** > **API Keys**. Every stored key works until revoked
+- Without any key, only local clients on the PC can use the API (Home Assistant gets 403)
+- The API can run shell commands on your PC through `/api/actions/execute`, so keep the key secret
+- The listen address is configurable in **Settings** (`apiBind`, default `0.0.0.0`)
+- Keys are stored in your OS keychain (Secret Service such as GNOME Keyring / macOS Keychain / Windows Credential Manager)
 - The WebSocket connection to HA uses a long-lived access token (stored in app config)
 - The plugin WebSocket server binds to localhost only and is not network-accessible
 

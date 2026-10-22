@@ -64,8 +64,13 @@
 {#if schema?.properties}
   {#each Object.entries(schema.properties) as [key, field]}
     {@const f = field as any}
+    {@const fid = `cfg-${pluginId}-${key}`}
     <div class="cfg-field">
-      <label class="cfg-label">{f.title || key}</label>
+      {#if f.type === "boolean"}
+        <span class="cfg-label">{f.title || key}</span>
+      {:else}
+        <label class="cfg-label" for={fid}>{f.title || key}</label>
+      {/if}
       {#if f.description}
         <p class="cfg-hint">{f.description}</p>
       {/if}
@@ -76,7 +81,7 @@
           {/each}
         </div>
         <div class="tag-add">
-          <input type="text" bind:value={tagInputs[key]} placeholder={f.placeholder || "Add..."} onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(key); }}} />
+          <input id={fid} type="text" bind:value={tagInputs[key]} placeholder={f.placeholder || "Add..."} onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(key); }}} />
           <button class="tag-add-btn" onclick={() => addTag(key)}>Add</button>
         </div>
       {:else if f.type === "boolean"}
@@ -85,15 +90,15 @@
           <span>{config[key] ? "Enabled" : "Disabled"}</span>
         </label>
       {:else if f.type === "number" || f.type === "integer"}
-        <input type="number" value={config[key] ?? f.default ?? 0} min={f.minimum} max={f.maximum} oninput={(e) => updateField(key, Number((e.target as HTMLInputElement).value))} />
+        <input id={fid} type="number" value={config[key] ?? f.default ?? 0} min={f.minimum} max={f.maximum} oninput={(e) => updateField(key, Number((e.target as HTMLInputElement).value))} />
       {:else if f.enum}
-        <select value={config[key] ?? f.default ?? ""} onchange={(e) => updateField(key, (e.target as HTMLSelectElement).value)}>
+        <select id={fid} value={config[key] ?? f.default ?? ""} onchange={(e) => updateField(key, (e.target as HTMLSelectElement).value)}>
           {#each f.enum as opt}
             <option value={opt}>{opt}</option>
           {/each}
         </select>
       {:else}
-        <input type={f.format === "password" ? "password" : "text"} value={config[key] ?? f.default ?? ""} placeholder={f.placeholder || ""} oninput={(e) => updateField(key, (e.target as HTMLInputElement).value)} />
+        <input id={fid} type={f.format === "password" ? "password" : "text"} value={config[key] ?? f.default ?? ""} placeholder={f.placeholder || ""} oninput={(e) => updateField(key, (e.target as HTMLInputElement).value)} />
       {/if}
     </div>
   {/each}

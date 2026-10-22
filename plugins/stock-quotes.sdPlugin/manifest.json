@@ -7,10 +7,22 @@
   "Icon": "icon",
   "CodePath": "plugin.js",
   "SDKVersion": 2,
+  "Nodejs": {
+    "Version": "20"
+  },
   "Actions": [],
   "OS": [
-    { "Platform": "linux", "MinimumVersion": "0" },
-    { "Platform": "mac", "MinimumVersion": "0" },
-    { "Platform": "windows", "MinimumVersion": "0" }
+    {
+      "Platform": "linux",
+      "MinimumVersion": "0"
+    },
+    {
+      "Platform": "mac",
+      "MinimumVersion": "0"
+    },
+    {
+      "Platform": "windows",
+      "MinimumVersion": "0"
+    }
   ]
 }

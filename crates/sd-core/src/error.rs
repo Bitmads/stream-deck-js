@@ -14,6 +14,9 @@ pub enum Error {
     #[error("Image error: {0}")]
     Image(String),
 
+    #[error("Platform error: {0}")]
+    Platform(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

@@ -5,37 +5,31 @@ mod commands;
 mod state;
 mod ws_server;
 
+use commands::app_settings::AppSettings;
 use state::AppState;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    AppHandle, Emitter, Manager, RunEvent, WindowEvent,
 };
 
 const API_PORT: u16 = 8484;
-const API_BIND: &str = "0.0.0.0";
 
-/// Load app_settings.json and return (minimize_to_tray, start_minimized).
-/// Returns defaults (true, false) if file doesn't exist or is malformed.
-fn load_app_settings() -> (bool, bool) {
-    let base = match dirs::config_dir() {
-        Some(d) => d.join("open-stream-deck"),
-        None => return (true, false),
-    };
-    let path = base.join("app_settings.json");
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return (true, false),
-    };
-    let json: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return (true, false),
-    };
-    let minimize = json.get("minimizeToTray").and_then(|v| v.as_bool()).unwrap_or(true);
-    let start_min = json.get("startMinimized").and_then(|v| v.as_bool()).unwrap_or(false);
-    (minimize, start_min)
+fn show_main_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
+/// Kill every plugin subprocess (they would otherwise outlive the app).
+fn stop_plugins(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let mut pm = state.plugin_manager.lock().unwrap_or_else(|e| e.into_inner());
+    pm.stop_all();
 }
 
 fn main() {
@@ -53,32 +47,28 @@ fn main() {
 
     let app_state = AppState::new();
     let var_rx = app_state.var_tx.subscribe();
-    let ws_variables = app_state.variables.clone();
-    let ws_var_tx = app_state.var_tx.clone();
+    let profile_rx = app_state.profile_tx.subscribe();
 
-    // Load app settings (tray behavior, start-minimized)
-    let (minimize_to_tray_default, start_minimized) = load_app_settings();
-    app_state.set_minimize_to_tray(minimize_to_tray_default);
+    // Load app settings (tray behavior, start-minimized, API bind, node path)
+    let settings = AppSettings::load();
+    app_state.set_minimize_to_tray(settings.minimize_to_tray);
+    if let Some(node) = &settings.node_path {
+        tracing::info!("Using configured nodePath {}", node.display());
+    }
+    app_state.plugin_manager.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .set_node_path(settings.node_path.clone());
 
-    // Load API key from OS keychain (if any)
-    commands::api_keys::load_api_key_on_startup();
+    let start_minimized = settings.start_minimized;
+    let api_bind = settings.api_bind.clone();
+    let api_state = app_state.clone();
 
-    // Start HTTP API server (shares state via Arc, binds to 0.0.0.0 for LAN access)
-    api_server::start_api_server(
-        AppState {
-            profile_store: app_state.profile_store.clone(),
-            device_manager: app_state.device_manager.clone(),
-            plugin_manager: app_state.plugin_manager.clone(),
-            variables: app_state.variables.clone(),
-            var_tx: app_state.var_tx.clone(),
-            ws_port: app_state.ws_port.clone(),
-            minimize_to_tray: app_state.minimize_to_tray.clone(),
-        },
-        API_PORT,
-        API_BIND,
-    );
-
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
+        // Must be the first plugin: a second launch focuses this instance and exits
+        // instead of fighting over the HID devices and the API port.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -93,23 +83,51 @@ fn main() {
                 window.open_devtools();
             }
 
-            // Build system tray
+            // Start the HTTP API server locked (only /api/health is served),
+            // then load the stored API keys off the main thread: a keychain
+            // read can block on an unlock prompt. A failed read keeps the API
+            // locked and is retried in the background.
+            api_server::start_api_server(api_state, API_PORT, &api_bind);
+            std::thread::spawn(commands::api_keys::reload_api_keys);
+
+            // Bundled plugins ship as app resources (release builds); install them
+            // into the user plugin dir where they are writable. Their config.json
+            // is carried over from the repository's plugins/ folder (where
+            // plugins ran from before) when it exists on this machine.
+            #[cfg(not(debug_assertions))]
+            {
+                match (app.path().resource_dir(), state::config_dir()) {
+                    (Ok(res), Ok(cfg)) => {
+                        let legacy = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                            .ancestors()
+                            .nth(2)
+                            .map(|repo_root| repo_root.join("plugins"));
+                        commands::plugin::install_bundled_plugins(
+                            &res.join("plugins"),
+                            &cfg.join("plugins"),
+                            legacy.as_deref().filter(|d| d.is_dir()),
+                        );
+                    }
+                    (Err(e), _) => tracing::warn!("Resource dir unavailable, bundled plugins not installed: {}", e),
+                    (_, Err(e)) => tracing::warn!("Config dir unavailable, bundled plugins not installed: {}", e),
+                }
+            }
+
+            // System tray (the only tray; none is declared in tauri.conf.json).
+            // Note: tray click events are not emitted on Linux; use the menu.
             let show = MenuItemBuilder::with_id("show", "Show").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main")
+                .icon(tauri::include_image!("icons/icon.png"))
+                .tooltip("Open Stream Deck")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
-                    }
+                    "show" => show_main_window(app),
                     "quit" => {
+                        stop_plugins(app);
                         app.exit(0);
                     }
                     _ => {}
@@ -121,67 +139,80 @@ fn main() {
                         ..
                     } = event
                     {
-                        let app = tray.app_handle();
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
             // Start plugin WebSocket server
-            let ws_handle = ws_server::start_ws_server(ws_variables, ws_var_tx);
-            tracing::info!("Plugin server on port {}", ws_handle.port);
-            app.state::<AppState>().ws_port.store(ws_handle.port, std::sync::atomic::Ordering::Relaxed);
+            let state = app.state::<AppState>();
+            let ws_ctx = ws_server::WsContext {
+                app: app.handle().clone(),
+                hub: state.plugin_hub.clone(),
+                plugin_manager: state.plugin_manager.clone(),
+                variables: state.variables.clone(),
+                var_tx: state.var_tx.clone(),
+            };
+            match ws_server::start_ws_server(ws_ctx) {
+                Ok(port) => {
+                    tracing::info!("Plugin server on port {}", port);
+                    state.ws_port.store(port, std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => tracing::error!("Plugin WebSocket server failed to start: {}", e),
+            }
 
-            // Forward API variable changes to frontend
+            // Forward variable changes (API, plugins) to the frontend
             let app_for_vars = app.handle().clone();
-            std::thread::spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-                rt.block_on(async move {
-                    let mut rx = var_rx;
-                    loop {
-                        match rx.recv().await {
-                            Ok(evt) => { let _ = app_for_vars.emit("variable-changed", &evt); }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                                tracing::warn!("Variable forwarder lagged, skipped {} events", n);
-                            }
-                            Err(_) => break, // Channel closed
-                        }
-                    }
-                });
-            });
-
-            // Plugin health check (detect crashed plugins, auto-restart)
-            let health_pm = app.state::<AppState>().plugin_manager.clone();
-            let health_ws_port = app.state::<AppState>().ws_port.clone();
-            std::thread::spawn(move || {
+            tauri::async_runtime::spawn(async move {
+                let mut rx = var_rx;
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    let ws_port = health_ws_port.load(std::sync::atomic::Ordering::Relaxed);
-                    if let Ok(mut pm) = health_pm.lock() {
-                        pm.check_health(ws_port);
+                    match rx.recv().await {
+                        Ok(evt) if evt.deleted => {
+                            let _ = app_for_vars.emit("variable-deleted", serde_json::json!({ "name": evt.name }));
+                        }
+                        Ok(evt) => {
+                            let _ = app_for_vars.emit("variable-changed", serde_json::json!({ "name": evt.name, "value": evt.value }));
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("Variable forwarder lagged, skipped {} events", n);
+                        }
+                        Err(_) => break, // Channel closed
                     }
                 }
             });
 
-            // Load profiles from disk on startup
-            let app_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let state = app_handle.state::<AppState>();
-                if let Err(e) = commands::profile::load_profiles_from_disk_inner(&state) {
-                    tracing::warn!("Failed to load profiles: {}", e);
+            // Forward profile reload requests (REST API) to the frontend
+            let app_for_profiles = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut rx = profile_rx;
+                loop {
+                    match rx.recv().await {
+                        Ok(evt) => {
+                            tracing::info!("Requesting UI reload of profile {}", evt.name);
+                            let _ = app_for_profiles.emit("profile-reload", &evt);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("Profile reload forwarder lagged, skipped {} events", n);
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            // Plugin supervision: restart crashed plugins with backoff (capped).
+            let health_pm = state.plugin_manager.clone();
+            let health_ws_port = state.ws_port.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                let ws_port = health_ws_port.load(std::sync::atomic::Ordering::Relaxed);
+                if let Ok(mut pm) = health_pm.lock() {
+                    pm.check_health(ws_port);
                 }
             });
 
             // Show window unless start-minimized is enabled
             if !start_minimized {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.set_focus();
-                }
+                show_main_window(app.handle());
             }
 
             Ok(())
@@ -207,15 +238,9 @@ fn main() {
             commands::device::stop_key_listener,
             commands::action::execute_action,
             commands::window::start_window_watcher,
-            commands::profile::get_active_profile,
-            commands::profile::list_profiles,
-            commands::profile::save_profile,
-            commands::profile::export_profile,
-            commands::profile::import_profile,
-            commands::profile::save_profiles_to_disk,
-            commands::profile::load_profiles_from_disk,
             commands::storage::save_json_file,
             commands::storage::load_json_file,
+            commands::storage::load_json_file_stamped,
             commands::storage::list_json_files,
             commands::storage::delete_json_file,
             commands::variables::set_variable,
@@ -225,15 +250,25 @@ fn main() {
             commands::api_keys::generate_api_key,
             commands::api_keys::list_api_keys,
             commands::api_keys::revoke_api_key,
+            commands::api_keys::get_api_auth_status,
             commands::app_settings::set_minimize_to_tray,
             commands::plugin::discover_external_plugins,
             commands::plugin::start_external_plugin,
             commands::plugin::stop_external_plugin,
+            commands::plugin::set_node_path,
+            commands::plugin::get_plugin_status,
+            commands::plugin::plugin_send_event,
             commands::plugin::get_plugin_config_schema,
             commands::plugin::read_plugin_config,
             commands::plugin::write_plugin_config,
             commands::proxy::fetch_image_as_data_url,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Open Stream Deck");
+        .build(tauri::generate_context!())
+        .expect("error while building Open Stream Deck");
+
+    app.run(|app, event| {
+        if let RunEvent::Exit = event {
+            stop_plugins(app);
+        }
+    });
 }

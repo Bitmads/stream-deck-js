@@ -17,6 +17,14 @@ pub struct PluginManifest {
     pub actions: Vec<PluginAction>,
     #[serde(rename = "OS")]
     pub os: Option<Vec<OsRequirement>>,
+    /// Elgato SDK `Nodejs` block, e.g. `{"Version": "20"}`.
+    pub nodejs: Option<NodejsRequirement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct NodejsRequirement {
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

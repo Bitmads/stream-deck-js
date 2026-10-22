@@ -8,7 +8,7 @@
   }: {
     settings: Record<string, string>;
     onchange: (updated: Record<string, string>) => void;
-    oncontrolselect?: (control: { id: string; domain: string; service: string; attr: string; min: number; max: number; step: number }) => void;
+    oncontrolselect?: (control: { id: string; domain: string; service: string; attr: string; readAttr?: string; min: number; max: number; step: number }) => void;
   } = $props();
 
   let query = $state("");
@@ -23,7 +23,7 @@
     onchange({});
   }
 
-  function selectControl(c: { id: string; domain: string; service: string; attr: string; min: number; max: number; step: number }) {
+  function selectControl(c: { id: string; domain: string; service: string; attr: string; readAttr?: string; min: number; max: number; step: number }) {
     ha.addWatch(settings.ha_entity);
     onchange({ ...settings, ha_domain: c.domain, ha_service: c.service, ha_control: c.id, ha_attr: c.attr });
     oncontrolselect?.(c);
@@ -37,12 +37,12 @@
 {#if settings.ha_entity}
   <div class="ha-chip">
     <span>{ha.getEntity(settings.ha_entity)?.friendly_name || settings.ha_entity}</span>
-    <button onclick={clearEntity}>×</button>
+    <button onclick={clearEntity} aria-label="Clear entity">×</button>
   </div>
   {@const ctrls = ha.getEntityControls(settings.ha_entity)}
   {@const svcs = ha.getEntityServices(settings.ha_entity)}
   {#if ctrls.length > 0}
-    <label class="fl">Control</label>
+    <span class="fl">Control</span>
     <div class="chips">
       {#each ctrls as c}
         <button class="chip" class:active={settings.ha_control === c.id} onclick={() => selectControl(c)}>{c.label}</button>
@@ -50,7 +50,7 @@
     </div>
   {/if}
   {#if svcs.length > 0}
-    <label class="fl">Service</label>
+    <span class="fl">Service</span>
     <div class="chips">
       {#each svcs as s}
         <button class="chip" class:active={settings.ha_service === s.service && !settings.ha_attr} onclick={() => selectService(s)}>{s.name}</button>
@@ -58,7 +58,7 @@
     </div>
   {/if}
 {:else}
-  <input type="text" bind:value={query} placeholder="Search entity..." />
+  <input type="text" aria-label="Search Home Assistant entity" bind:value={query} placeholder="Search entity..." />
   {#if query.length > 0}
     <div class="ent-list">
       {#each results as ent}
@@ -75,7 +75,7 @@
   .ha-chip { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg-primary); border-radius: var(--radius-sm); font-size: 12px; color: var(--text-primary); margin-bottom: 4px; }
   .ha-chip button { font-size: 14px; color: var(--text-muted); cursor: pointer; padding: 0 2px; }
   .ha-chip button:hover { color: var(--danger); }
-  .fl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
+  .fl { display: block; font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
   .chips { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
   .chip { padding: 3px 8px; border-radius: 10px; font-size: 11px; cursor: pointer; background: var(--bg-primary); color: var(--text-secondary); border: 1px solid var(--border); }
   .chip:hover { color: var(--text-primary); border-color: var(--text-muted); }

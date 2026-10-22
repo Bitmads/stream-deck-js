@@ -29,7 +29,7 @@
   <div class="trigger-editor">
     <div class="te-header">
       <h4>Triggers for "{scene.name}"</h4>
-      <button class="te-close" onclick={() => open = false}>X</button>
+      <button class="te-close" onclick={() => open = false} aria-label="Close triggers">X</button>
     </div>
     <p class="te-hint">When a trigger matches, this scene activates automatically.</p>
 
@@ -37,23 +37,26 @@
       <div class="trigger-row">
         {#if trigger.type === "window"}
           <div class="trigger-fields">
+            {#if !trigger.app_name?.trim() && !trigger.window_title?.trim()}
+              <span class="tf-inactive">Inactive — enter an app name or window title to enable this trigger.</span>
+            {/if}
             <div class="tf">
-              <span class="tf-label">App name</span>
-              <input class="tf-input" type="text" value={trigger.app_name || ''} placeholder="e.g. phpstorm, firefox, Code" oninput={(e) => updateTrigger(i, { app_name: (e.target as HTMLInputElement).value })} />
+              <label class="tf-label" for="trig-app-{i}">App name</label>
+              <input id="trig-app-{i}" class="tf-input" type="text" value={trigger.app_name || ''} placeholder="e.g. phpstorm, firefox, Code" oninput={(e) => updateTrigger(i, { app_name: (e.target as HTMLInputElement).value })} />
             </div>
             <div class="tf">
-              <span class="tf-label">Window title</span>
-              <input class="tf-input" type="text" value={trigger.window_title || ''} placeholder="regex:.*\.rs$ or keyword" oninput={(e) => updateTrigger(i, { window_title: (e.target as HTMLInputElement).value })} />
+              <label class="tf-label" for="trig-title-{i}">Window title</label>
+              <input id="trig-title-{i}" class="tf-input" type="text" value={trigger.window_title || ''} placeholder="regex:.*\.rs$ or keyword" oninput={(e) => updateTrigger(i, { window_title: (e.target as HTMLInputElement).value })} />
             </div>
             <div class="tf">
-              <span class="tf-label">Priority</span>
-              <input class="tf-input" type="number" value={trigger.priority ?? 0} oninput={(e) => updateTrigger(i, { priority: Number((e.target as HTMLInputElement).value) })} />
+              <label class="tf-label" for="trig-prio-{i}">Priority</label>
+              <input id="trig-prio-{i}" class="tf-input" type="number" value={trigger.priority ?? 0} oninput={(e) => updateTrigger(i, { priority: Number((e.target as HTMLInputElement).value) })} />
             </div>
           </div>
         {:else if trigger.type === "manual"}
           <span class="trigger-type">Manual</span>
         {/if}
-        <button class="trigger-remove" onclick={() => removeTrigger(i)}>X</button>
+        <button class="trigger-remove" onclick={() => removeTrigger(i)} aria-label="Remove trigger">X</button>
       </div>
     {/each}
 
@@ -77,6 +80,7 @@
   .tf-label { font-size: 10px; color: var(--text-muted); min-width: 70px; text-transform: uppercase; }
   .tf-input { flex: 1; padding: 4px 6px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); font-size: 12px; outline: none; }
   .tf-input:focus { border-color: var(--accent); }
+  .tf-inactive { font-size: 11px; color: var(--warning); }
   .trigger-type { font-size: 12px; color: var(--text-muted); flex: 1; }
   .trigger-remove { font-size: 11px; color: var(--danger); cursor: pointer; padding: 2px 6px; flex-shrink: 0; }
   .trigger-remove:hover { background: rgba(231,76,60,0.15); border-radius: var(--radius-sm); }

@@ -1,46 +1,25 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { untrack } from "svelte";
   import KeySlot from "./KeySlot.svelte";
   import { getSelectedDevice } from "../../lib/stores/devices.svelte";
-  import { selectEncoder, getSelectedEncoderIndex, getEncoderConfig, getEncoderResolved, getStripConfig, selectStripItem, addStripItem } from "../../lib/stores/editor.svelte";
-  import type { StripItem } from "../../lib/stores/editor.svelte";
-
-  function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, mode: string): string[] {
-    const result: string[] = [];
-    for (const para of text.split("\n")) {
-      if (mode === "word") {
-        const words = para.split(/(\s+)/);
-        let line = "";
-        for (const w of words) {
-          const test = line + w;
-          if (ctx.measureText(test).width > maxW && line.trim()) { result.push(line.trim()); line = w.trimStart(); }
-          else line = test;
-        }
-        if (line.trim()) result.push(line.trim()); else if (!result.length) result.push("");
-      } else {
-        let line = "";
-        for (const c of para) {
-          if (ctx.measureText(line + c).width > maxW && line) { result.push(line); line = c; }
-          else line += c;
-        }
-        if (line) result.push(line); else if (!result.length) result.push("");
-      }
-    }
-    return result;
-  }
+  import {
+    selectEncoder, getSelectedEncoderIndex, getEncoderConfig, getEncoderResolved, getStripConfig,
+    selectStripItem, addStripItem, updateStripItem, store,
+  } from "../../lib/stores/editor.svelte";
+  import { renderStrip, STRIP_DESIGN_WIDTH, STRIP_DESIGN_HEIGHT } from "../../lib/utils/render-strip";
+  import { deviceKeyCount, deviceKeyPixelSize } from "../../lib/types/profile";
 
   let device = $derived(getSelectedDevice());
   let columns = $derived(device?.columns ?? 5);
   let rows = $derived(device?.rows ?? 3);
-  let totalKeys = $derived(columns * rows);
-  let keySize = $derived(device?.key_size ? Math.min(device.key_size, 96) : 72);
+  let totalKeys = $derived(device ? deviceKeyCount(device) : columns * rows);
+  /** Native key image size: previews render at it, exactly like the hardware sync. */
+  let nativeKeySize = $derived(device ? deviceKeyPixelSize(device) : 72);
+  /** On-screen size of a key box. */
+  let keySize = $derived(nativeKeySize > 0 ? Math.min(nativeKeySize, 96) : 72);
   let hasLcd = $derived(device?.has_lcd_strip ?? false);
   let hasDials = $derived(device?.has_dials ?? false);
   let encoderCount = $derived(device?.encoder_count ?? 0);
-  let lcdWidth = $derived(device?.lcd_width ?? 0);
-  let lcdHeight = $derived(device?.lcd_height ?? 0);
-  import { store } from "../../lib/stores/store.svelte";
-  import { updateStripItem } from "../../lib/stores/editor.svelte";
 
   let label = $derived(device?.model ?? "No device");
 
@@ -55,187 +34,97 @@
 
   function stripCoords(e: MouseEvent, canvas: HTMLCanvasElement): [number, number] {
     const rect = canvas.getBoundingClientRect();
-    return [((e.clientX - rect.left) / rect.width) * 800, ((e.clientY - rect.top) / rect.height) * 100];
+    return [((e.clientX - rect.left) / rect.width) * STRIP_DESIGN_WIDTH, ((e.clientY - rect.top) / rect.height) * STRIP_DESIGN_HEIGHT];
+  }
+
+  function hitItem(sx: number, sy: number) {
+    const items = getStripConfig().items;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (sx >= it.x && sx <= it.x + it.w && sy >= it.y && sy <= it.y + it.h) return it;
+    }
+    return null;
   }
 
   function onStripMouseDown(e: MouseEvent) {
-    const canvas = e.target as HTMLCanvasElement;
-    const [sx, sy] = stripCoords(e, canvas);
-    for (let i = stripCfg.items.length - 1; i >= 0; i--) {
-      const it = stripCfg.items[i];
-      if (sx >= it.x && sx <= it.x + it.w && sy >= it.y && sy <= it.y + it.h) {
-        dragItem = it.id;
-        dragStartX = sx;
-        dragStartY = sy;
-        dragOrigX = it.x;
-        dragOrigY = it.y;
-        dragStarted = false;
-        e.preventDefault();
-        return;
-      }
-    }
+    const [sx, sy] = stripCoords(e, e.currentTarget as HTMLCanvasElement);
+    const it = hitItem(sx, sy);
+    if (!it) return;
+    dragItem = it.id;
+    dragStartX = sx;
+    dragStartY = sy;
+    dragOrigX = it.x;
+    dragOrigY = it.y;
+    dragStarted = false;
+    e.preventDefault();
   }
 
   function onStripMouseMove(e: MouseEvent) {
     if (!dragItem) return;
-    const canvas = e.target as HTMLCanvasElement;
-    const [sx, sy] = stripCoords(e, canvas);
+    const [sx, sy] = stripCoords(e, e.currentTarget as HTMLCanvasElement);
     const dx = sx - dragStartX;
     const dy = sy - dragStartY;
     if (!dragStarted && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
     dragStarted = true;
-    const newX = Math.max(0, Math.min(800, Math.round(dragOrigX + dx)));
-    const newY = Math.max(0, Math.min(100, Math.round(dragOrigY + dy)));
+    const newX = Math.max(0, Math.min(STRIP_DESIGN_WIDTH, Math.round(dragOrigX + dx)));
+    const newY = Math.max(0, Math.min(STRIP_DESIGN_HEIGHT, Math.round(dragOrigY + dy)));
     updateStripItem(dragItem, { x: newX, y: newY });
   }
 
-  function onStripMouseUp(e: MouseEvent) {
+  function onStripMouseUp() {
     if (dragItem && !dragStarted) {
       // Was a click, not a drag — select the item
       selectStripItem(dragItem);
+    } else if (!dragItem) {
+      // Click on empty strip area deselects
+      if (store.selectedStripItemId) selectStripItem(null);
     }
     dragItem = null;
     dragStarted = false;
   }
 
-  function onStripClick(e: MouseEvent) {
-    // Deselect when clicking empty strip area (no item hit)
-    const canvas = e.target as HTMLCanvasElement;
-    const [sx, sy] = stripCoords(e, canvas);
-    for (let i = stripCfg.items.length - 1; i >= 0; i--) {
-      const it = stripCfg.items[i];
-      if (sx >= it.x && sx <= it.x + it.w && sy >= it.y && sy <= it.y + it.h) return;
-    }
-    selectStripItem(null);
-  }
-  let brightness = $state(80);
+  // Strip preview: the same renderer the device sync uses, so preview == device.
+  let stripCanvas = $state<HTMLCanvasElement | null>(null);
+  let stripVersion = 0;
+  $effect(() => {
+    const canvas = stripCanvas;
+    if (!canvas) return;
+    const strip = getStripConfig();
+    const selectedItemId = store.selectedStripItemId;
+    const version = ++stripVersion;
+    // Draw offscreen first so overlapping renders never interleave on the visible canvas.
+    const off = document.createElement("canvas");
+    off.width = canvas.width; off.height = canvas.height;
+    const offCtx = off.getContext("2d");
+    if (!offCtx) return;
+    // resolveStripInputs runs synchronously inside renderStrip, so the variables it reads are tracked here.
+    const done = renderStrip(offCtx, strip, { lookup: store.lookupVar, selectedItemId });
+    untrack(() => {
+      done.then(() => {
+        if (version !== stripVersion) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(off, 0, 0);
+      }).catch((e) => console.warn("Strip preview failed:", e));
+    });
+  });
+
+  // Per-device brightness, saved in the profile and re-applied whenever the device is opened.
+  let brightness = $derived(device ? (store.getDeviceBrightness(device.serial) ?? 80) : 80);
   let selectedEncoder = $derived(getSelectedEncoderIndex());
-  // Include varRevision so strip re-renders when variables change
-  let stripCfg = $derived({ ...getStripConfig(), _rev: store.revision, _varRev: store.varRevision, _sel: store.selectedStripItemId });
-
-  const imgCache: Record<string, string> = {};
-  function fetchImgUrl(src: string, redraw: () => void): string {
-    if (!src.startsWith("http")) return src;
-    if (imgCache[src]) return imgCache[src];
-    invoke<string>("fetch_image_as_data_url", { url: src }).then(dataUrl => {
-      imgCache[src] = dataUrl;
-      redraw();
-    }).catch(() => {});
-    return "";
-  }
-
-  function renderStrip(canvas: HTMLCanvasElement, cfg: any) {
-    function draw() {
-      const ctx = canvas.getContext("2d")!;
-      const bg = store.resolveTemplate(cfg.backgroundColor || "#0a0a1a");
-      ctx.fillStyle = (bg.startsWith("#") || bg.startsWith("rgb")) ? bg : "#0a0a1a";
-      ctx.fillRect(0, 0, 800, 100);
-      for (const item of cfg.items || []) {
-        ctx.save();
-        ctx.beginPath(); ctx.roundRect(item.x, item.y, item.w, item.h, 4); ctx.clip();
-        // Background
-        if (item.backgroundColor) {
-          const c = store.resolveTemplate(item.backgroundColor);
-          ctx.fillStyle = (c.startsWith("#") || c.startsWith("rgb")) ? c : "#333";
-          ctx.fillRect(item.x, item.y, item.w, item.h);
-        }
-        // Bar
-        if (item.bar) {
-          const val = store.resolveNumber(item.bar.value, 0);
-          const mn = store.resolveNumber(item.bar.min, 0);
-          const mx = store.resolveNumber(item.bar.max, 100);
-          const ratio = mx > mn ? Math.max(0, Math.min(1, (val - mn) / (mx - mn))) : 0;
-          const bc = store.resolveTemplate(item.bar.color || "#03a9f4");
-          const barC = (bc.startsWith("#") || bc.startsWith("rgb")) ? bc : "#03a9f4";
-          if (item.bar.position === "full") {
-            ctx.fillStyle = barC; ctx.fillRect(item.x, item.y, item.w * ratio, item.h);
-          } else {
-            const bh = item.bar.height || 8;
-            ctx.fillStyle = "rgba(255,255,255,0.1)";
-            ctx.beginPath(); ctx.roundRect(item.x + 4, item.y + item.h - bh - 4, item.w - 8, bh, 3); ctx.fill();
-            ctx.fillStyle = barC;
-            ctx.beginPath(); ctx.roundRect(item.x + 4, item.y + item.h - bh - 4, (item.w - 8) * ratio, bh, 3); ctx.fill();
-          }
-        }
-        // Image (data URL or remote URL)
-        const resolvedUrl = item.imageUrl ? store.resolveTemplate(item.imageUrl) : "";
-        const rawImgSrc = item.imageDataUrl || (resolvedUrl && !resolvedUrl.includes("{{") ? resolvedUrl : "");
-        const imgSrc = rawImgSrc ? fetchImgUrl(rawImgSrc, draw) : "";
-        if (imgSrc) {
-          const img = new Image(); img.src = imgSrc;
-          if (img.complete) {
-            const fit = item.imageFit || "fill";
-            const ix = item.x, iy = item.y, iw = item.w, ih = item.h;
-            if (fit === "fill") {
-              ctx.drawImage(img, ix, iy, iw, ih);
-            } else if (fit === "cover") {
-              const sc = Math.max(iw / img.width, ih / img.height);
-              const sw = iw / sc, sh = ih / sc;
-              ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, ix, iy, iw, ih);
-            } else if (fit === "contain") {
-              const sc = Math.min(iw / img.width, ih / img.height);
-              const dw = img.width * sc, dh = img.height * sc;
-              ctx.drawImage(img, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
-            } else {
-              ctx.drawImage(img, ix + (iw - img.width) / 2, iy + (ih - img.height) / 2);
-            }
-          }
-        }
-        // Icon
-        if (item.icon) {
-          const sz = Math.min(item.icon.size || 48, item.h - 4);
-          const color = item.icon.color || "#fff";
-          const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${item.icon.viewBox}" width="${sz}" height="${sz}"><style>*{fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}</style>${item.icon.svgBody}</svg>`;
-          const svgImg = new Image(); svgImg.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgStr)))}`;
-          if (svgImg.complete) ctx.drawImage(svgImg, item.x + (item.w - sz) / 2, item.y + (item.h - sz) / 2, sz, sz);
-        }
-        // Text layers
-        for (const t of item.texts || []) {
-          if (!t?.text || t.hidden) continue;
-          const text = store.resolveTemplate(t.text);
-          const color = store.resolveTemplate(t.color || "#fff");
-          ctx.fillStyle = (color.startsWith("#") || color.startsWith("rgb")) ? color : "#fff";
-          const wt = t.fontWeight === "bold" ? "bold " : "";
-          const st = t.fontStyle === "italic" ? "italic " : "";
-          const fs = t.fontSize || 14;
-          ctx.font = `${st}${wt}${fs}px ${t.fontFamily || "sans-serif"}`;
-          ctx.textAlign = t.hAlign === "left" ? "left" : t.hAlign === "right" ? "right" : "center";
-          ctx.textBaseline = t.vAlign === "top" ? "top" : t.vAlign === "bottom" ? "bottom" : "middle";
-          const wrapMode = t.wrap || "none";
-          const lines = wrapMode === "none" ? text.split("\n") : wrapLines(ctx, text, item.w - 8, wrapMode);
-          const lh = fs * 1.2;
-          const totalH = lines.length * lh;
-          for (let li = 0; li < lines.length; li++) {
-            let tx: number, ty: number;
-            if (t.useAbsolutePos) { tx = item.x + (t.x || 0); ty = item.y + (t.y || 0) + li * lh; }
-            else {
-              tx = t.hAlign === "left" ? item.x + 4 : t.hAlign === "right" ? item.x + item.w - 4 : item.x + item.w / 2;
-              const byBase = t.vAlign === "top" ? item.y + fs : t.vAlign === "bottom" ? item.y + item.h - totalH : item.y + (item.h - totalH) / 2 + fs;
-              ty = byBase + li * lh;
-            }
-            if (t.shadow) { ctx.shadowColor = t.shadow.color; ctx.shadowBlur = t.shadow.blur; ctx.shadowOffsetX = t.shadow.offsetX; ctx.shadowOffsetY = t.shadow.offsetY; }
-            if (t.stroke && t.stroke.width > 0) { ctx.strokeStyle = t.stroke.color; ctx.lineWidth = t.stroke.width; ctx.lineJoin = "round"; ctx.strokeText(lines[li], tx, ty, item.w - 8); }
-            ctx.fillText(lines[li], tx, ty, item.w - 8);
-            if (t.shadow) { ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; }
-          }
-        }
-        ctx.restore();
-        // Selected highlight (outside clip)
-        if (item.id === store.selectedStripItemId) {
-          ctx.strokeStyle = "#0078ff"; ctx.lineWidth = 2;
-          ctx.strokeRect(item.x, item.y, item.w, item.h);
-        }
-      }
-    }
-    draw();
-    // Re-draw after images load (async)
-    setTimeout(draw, 100);
-    return { update(newCfg: any) { cfg = newCfg; draw(); setTimeout(draw, 100); } };
-  }
 
   function handleBrightness(e: Event) {
-    brightness = Number((e.target as HTMLInputElement).value);
-    invoke("set_brightness", { percent: brightness }).catch(() => {});
+    const serial = device?.serial;
+    if (!serial) return;
+    void store.setDeviceBrightness(serial, Number((e.target as HTMLInputElement).value));
+  }
+
+  function addItem() {
+    addStripItem({
+      id: crypto.randomUUID(), x: 10, y: 10, w: 180, h: 80, backgroundColor: "#2a2a4a",
+      texts: [{ text: "Item", fontFamily: "sans-serif", fontSize: 16, fontWeight: "normal", fontStyle: "normal", color: "#ffffff", hAlign: "center", vAlign: "middle", anchor: "center", useAbsolutePos: false }],
+    });
   }
 </script>
 
@@ -247,8 +136,8 @@
         class="key-grid"
         style="grid-template-columns: repeat({columns}, {keySize}px); grid-template-rows: repeat({rows}, {keySize}px);"
       >
-        {#each Array(totalKeys) as _, i}
-          <KeySlot keyIndex={i} size={keySize} serial={device?.serial || ""} />
+        {#each Array(totalKeys) as _, i (i)}
+          <KeySlot keyIndex={i} size={keySize} nativeSize={nativeKeySize} />
         {/each}
       </div>
 
@@ -256,15 +145,16 @@
       {#if hasLcd}
         {@const stripW = columns * (keySize + 8) - 8}
         <div class="lcd-strip" style="width: {stripW}px;">
-          <canvas class="lcd-canvas" width="800" height="100" style="width:{stripW}px; height:{stripW * 100/800}px;"
-            use:renderStrip={stripCfg}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <canvas class="lcd-canvas" width={device?.lcd_width || STRIP_DESIGN_WIDTH} height={device?.lcd_height || STRIP_DESIGN_HEIGHT}
+            style="width:{stripW}px; height:{stripW * STRIP_DESIGN_HEIGHT / STRIP_DESIGN_WIDTH}px;"
+            bind:this={stripCanvas}
             onmousedown={onStripMouseDown}
             onmousemove={onStripMouseMove}
             onmouseup={onStripMouseUp}
             onmouseleave={() => { if (dragItem) { dragItem = null; dragStarted = false; } }}
-            onclick={onStripClick}
           ></canvas>
-          <button class="strip-add" onclick={() => addStripItem({ id: crypto.randomUUID(), x: 10, y: 10, w: 180, h: 80, backgroundColor: "#2a2a4a", texts: [{ text: "Item", fontFamily: "sans-serif", fontSize: 16, fontWeight: "normal", fontStyle: "normal", color: "#ffffff", hAlign: "center", vAlign: "middle", anchor: "center", useAbsolutePos: false }] })} title="Add item">+</button>
+          <button class="strip-add" onclick={addItem} title="Add item" aria-label="Add strip item">+</button>
         </div>
       {/if}
 
@@ -299,7 +189,7 @@
       </span>
       <div class="brightness">
         <span class="brightness-icon">☀</span>
-        <input type="range" min="0" max="100" value={brightness} oninput={handleBrightness} />
+        <input type="range" min="0" max="100" value={brightness} oninput={handleBrightness} aria-label="Brightness" />
         <span class="brightness-val">{brightness}%</span>
       </div>
     </div>

@@ -18,6 +18,12 @@
     }
   }
 
+  function handleDragStart(e: DragEvent, action: ActionDef) {
+    if (!e.dataTransfer) return;
+    e.dataTransfer.setData("action-id", action.id);
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
   function handleFavToggle(e: Event, actionId: string) {
     e.stopPropagation();
     toggleFavorite(actionId);
@@ -30,17 +36,20 @@
       <div class="sidebar-section">
         <h3 class="sidebar-title">Favorites</h3>
         <div class="action-list">
-          {#each favorites as action}
-            <button
-              class="action-item"
-              draggable="true"
-              ondragstart={(e) => { e.dataTransfer!.setData("action-id", action.id); e.dataTransfer!.effectAllowed = "copy"; }}
-              onclick={() => handleClick(action)}
-            >
-              <span class="action-icon" style="background: {action.color}22; color: {action.color};">{action.icon}</span>
-              <span class="action-label">{action.label}</span>
-              <span class="fav-btn active" onclick={(e) => handleFavToggle(e, action.id)} title="Remove favorite">★</span>
-            </button>
+          {#each favorites as action (action.id)}
+            <div class="action-row">
+              <button
+                class="action-item"
+                draggable="true"
+                ondragstart={(e) => handleDragStart(e, action)}
+                onclick={() => handleClick(action)}
+                title={selectedKey === null ? "Select a key first, or drag onto a key" : `Assign to key ${selectedKey}`}
+              >
+                <span class="action-icon" style="background: {action.color}22; color: {action.color};">{action.icon}</span>
+                <span class="action-label">{action.label}</span>
+              </button>
+              <button class="fav-btn active" onclick={(e) => handleFavToggle(e, action.id)} title="Remove favorite" aria-label="Remove {action.label} from favorites">★</button>
+            </div>
           {/each}
         </div>
       </div>
@@ -50,19 +59,22 @@
       <div class="sidebar-section">
         <h3 class="sidebar-title">Recent</h3>
         <div class="action-list">
-          {#each recent as action}
-            <button
-              class="action-item"
-              draggable="true"
-              ondragstart={(e) => { e.dataTransfer!.setData("action-id", action.id); e.dataTransfer!.effectAllowed = "copy"; }}
-              onclick={() => handleClick(action)}
-            >
-              <span class="action-icon" style="background: {action.color}22; color: {action.color};">{action.icon}</span>
-              <span class="action-label">{action.label}</span>
+          {#each recent as action (action.id)}
+            <div class="action-row">
+              <button
+                class="action-item"
+                draggable="true"
+                ondragstart={(e) => handleDragStart(e, action)}
+                onclick={() => handleClick(action)}
+                title={selectedKey === null ? "Select a key first, or drag onto a key" : `Assign to key ${selectedKey}`}
+              >
+                <span class="action-icon" style="background: {action.color}22; color: {action.color};">{action.icon}</span>
+                <span class="action-label">{action.label}</span>
+              </button>
               {#if !isFavorite(action.id)}
-                <span class="fav-btn" onclick={(e) => handleFavToggle(e, action.id)} title="Add to favorites">☆</span>
+                <button class="fav-btn" onclick={(e) => handleFavToggle(e, action.id)} title="Add to favorites" aria-label="Add {action.label} to favorites">☆</button>
               {/if}
-            </button>
+            </div>
           {/each}
         </div>
       </div>
@@ -92,20 +104,21 @@
   }
   .sidebar-hint { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
   .action-list { display: flex; flex-direction: column; gap: 2px; }
+  .action-row { display: flex; align-items: center; border-radius: var(--radius-sm); }
+  .action-row:hover { background: var(--bg-tertiary); }
   .action-item {
     display: flex; align-items: center; gap: 6px; padding: 5px 6px;
     border-radius: var(--radius-sm); font-size: 12px; color: var(--text-secondary);
-    cursor: pointer; text-align: left; width: 100%;
+    cursor: pointer; text-align: left; flex: 1; min-width: 0;
   }
-  .action-item:hover:not(:disabled) { background: var(--bg-tertiary); color: var(--text-primary); }
-  .action-item:disabled { opacity: 0.4; cursor: not-allowed; }
+  .action-item:hover { color: var(--text-primary); }
   .action-icon {
     width: 24px; height: 24px; border-radius: 5px; display: flex;
     align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;
   }
   .action-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fav-btn {
-    font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 0 2px;
+    font-size: 12px; color: var(--text-muted); cursor: pointer; padding: 0 6px;
     line-height: 1; flex-shrink: 0;
   }
   .fav-btn:hover { color: var(--warning); }

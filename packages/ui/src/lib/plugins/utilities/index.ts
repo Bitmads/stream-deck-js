@@ -3,9 +3,9 @@ import type { PluginDef } from "../../stores/plugins.svelte";
 const TIMER_ACTION = { id: "timer", label: "Timer", icon: "⏱", color: "#f39c12" };
 const COUNTER_ACTION = { id: "counter", label: "Counter", icon: "#", color: "#e91e63" };
 
-// Timer and counter actions are handled directly in App.svelte's executeKeyAction
-// because they manipulate key state (text display, device sync) via store methods.
-// The plugin just registers the action types so they appear in the picker.
+// Timer and counter actions are executed by the store's dispatcher (store.executeAction): they
+// display through per-context runtime overrides and are tied to the key that started them.
+// The plugin registers the action types so they appear in the picker.
 
 export const utilitiesPluginDef: PluginDef = {
   id: "utilities",

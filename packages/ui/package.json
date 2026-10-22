@@ -7,14 +7,16 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "icons": "node scripts/build-icon-assets.mjs"
   },
   "dependencies": {
     "@iconify/json": "^2.2.454",
     "@iconify/utils": "^3.1.0",
     "@tauri-apps/api": "^2.0.0",
-    "@tauri-apps/plugin-shell": "^2.0.0",
     "@tauri-apps/plugin-autostart": "^2.0.0",
+    "@tauri-apps/plugin-shell": "^2.0.0",
     "lucide-svelte": "^1.0.1"
   },
   "devDependencies": {
@@ -23,6 +25,7 @@
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.6.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.2.7"
   }
 }

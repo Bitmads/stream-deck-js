@@ -10,7 +10,7 @@
     "beforeBuildCommand": "pnpm --filter ui build"
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "title": "Open Stream Deck",
@@ -23,13 +23,23 @@
         "visible": false
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "tooltip": "Open Stream Deck"
-    },
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: http: https: asset: http://asset.localhost",
+        "font-src": "'self' data:",
+        "connect-src": "'self' ipc: http://ipc.localhost ws: wss: http: https:",
+        "media-src": "'self' data: blob:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "frame-src": "'none'",
+        "form-action": "'none'"
+      },
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "bundle": {
@@ -38,8 +48,15 @@
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
-      "icons/128x128@2x.png"
-    ]
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../plugins/stock-quotes.sdPlugin/manifest.json": "plugins/stock-quotes.sdPlugin/manifest.json",
+      "../../plugins/stock-quotes.sdPlugin/plugin.js": "plugins/stock-quotes.sdPlugin/plugin.js",
+      "../../plugins/stock-quotes.sdPlugin/config.schema.json": "plugins/stock-quotes.sdPlugin/config.schema.json"
+    }
   },
   "plugins": {
     "shell": {

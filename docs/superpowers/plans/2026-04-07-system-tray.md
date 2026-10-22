@@ -1,5 +1,7 @@
 # System Tray & Background Operation — Implementation Plan
 
+> **Historical plan (April 2026); the unchecked boxes are not pending work, the feature is implemented.** See the deviations note in `docs/superpowers/specs/2026-04-07-system-tray-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Open Stream Deck run as a background tray app — close hides to tray, optional start-on-boot and start-minimized, with settings UI.

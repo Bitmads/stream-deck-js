@@ -1,5 +1,13 @@
 # System Tray & Background Operation
 
+> **Historical design spec (April 2026), kept for reference; the code is the source of truth.**
+>
+> **Implemented, deviations (2026-10):** autostart is not exposed as `enable_autostart` / `disable_autostart` /
+> `is_autostart_enabled` Tauri commands; the Settings page uses `@tauri-apps/plugin-autostart` directly.
+> There is a single tray (`TrayIconBuilder::with_id("main")` in main.rs; no `trayIcon` in tauri.conf.json).
+> On Linux, left-clicking the tray icon does not show the window; use the menu's Show item. Quit stops all
+> external plugin processes.
+
 ## Summary
 
 Add system tray support so Open Stream Deck runs as a background app. The window is for editing; day-to-day use is headless with the Stream Deck devices active. Closing the window hides to tray by default instead of quitting.

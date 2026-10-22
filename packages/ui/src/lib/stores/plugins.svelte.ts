@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { registerActionType, unregisterActionType } from "./store.svelte";
-import type { ActionDef } from "./store.svelte";
+import type { ActionDef, ActionExecutor } from "./store.svelte";
 import type { Component } from "svelte";
 
 // ─── Types ───────────────────────────────────────────────────
@@ -18,7 +18,8 @@ export interface PluginDef {
   destroy?: () => Promise<void>;
   settingsComponent?: Component;
   actions?: ActionDef[];
-  actionExecutors?: Record<string, (settings: Record<string, string>) => Promise<void>>;
+  /** Executors receive template-resolved settings and the triggering device/scene/key, if any. */
+  actionExecutors?: Record<string, ActionExecutor>;
 }
 
 interface PluginState {
@@ -29,6 +30,8 @@ interface PluginState {
 
 const plugins = $state<PluginDef[]>([]);
 const pluginStates = $state<Record<string, PluginState>>({});
+/** Last init() failure per plugin (runtime only; cleared on a successful enable). */
+const pluginErrors = $state<Record<string, string>>({});
 
 // Track which actions belong to which plugin
 const pluginActionMap: Record<string, string[]> = {};
@@ -48,7 +51,12 @@ async function savePluginStates() {
   await invoke("save_json_file", {
     filename: "plugins",
     content: JSON.stringify(pluginStates),
-  }).catch(() => {});
+  }).catch((e) => console.error("Failed to save plugin states:", e));
+}
+
+function unregisterPluginActions(id: string) {
+  for (const actionId of pluginActionMap[id] || []) unregisterActionType(actionId);
+  delete pluginActionMap[id];
 }
 
 // ─── Public API ──────────────────────────────────────────────
@@ -60,10 +68,16 @@ export function registerPlugin(def: PluginDef) {
   }
 }
 
-/** Enable a plugin: call init(), register actions, persist. */
+/**
+ * Enable a plugin: register its actions, call init(), persist.
+ * If init() throws, its actions are unregistered, the error is recorded (getPluginError) and rethrown.
+ * A plugin that was disabled before stays disabled; one that was already enabled (startup) keeps its
+ * persisted state so a transient failure does not turn it off for good.
+ */
 export async function enablePlugin(id: string) {
   const def = plugins.find(p => p.id === id);
   if (!def) return;
+  const wasEnabled = isEnabled(id);
 
   pluginStates[id] = { enabled: true };
 
@@ -78,9 +92,14 @@ export async function enablePlugin(id: string) {
     pluginActionMap[id] = actionIds;
   }
 
-  // Call init
-  if (def.init) {
-    await def.init();
+  try {
+    if (def.init) await def.init();
+    delete pluginErrors[id];
+  } catch (e) {
+    unregisterPluginActions(id);
+    pluginErrors[id] = e instanceof Error ? e.message : String(e);
+    if (!wasEnabled) pluginStates[id] = { enabled: false };
+    throw e;
   }
 
   await savePluginStates();
@@ -97,11 +116,8 @@ export async function disablePlugin(id: string) {
   }
 
   // Unregister actions
-  const actionIds = pluginActionMap[id] || [];
-  for (const actionId of actionIds) {
-    unregisterActionType(actionId);
-  }
-  delete pluginActionMap[id];
+  unregisterPluginActions(id);
+  delete pluginErrors[id];
 
   pluginStates[id] = { enabled: false };
   await savePluginStates();
@@ -121,6 +137,11 @@ export function isEnabled(id: string): boolean {
   if (id in pluginStates) return pluginStates[id].enabled;
   const def = plugins.find(p => p.id === id);
   return def?.type === "builtin"; // builtin defaults enabled, external defaults disabled
+}
+
+/** Error from the plugin's last failed enable, or null. */
+export function getPluginError(id: string): string | null {
+  return pluginErrors[id] ?? null;
 }
 
 /** Get all registered plugins. */
@@ -179,10 +200,14 @@ export async function initPluginRegistry() {
   // Discover external plugins from disk
   await discoverExternalPlugins();
 
-  // Enable all plugins that should be active
+  // Enable all plugins that should be active; one failing plugin must not block the others.
   for (const def of plugins) {
     if (isEnabled(def.id)) {
-      await enablePlugin(def.id);
+      try {
+        await enablePlugin(def.id);
+      } catch (e) {
+        console.error(`Plugin "${def.id}" failed to start:`, e);
+      }
     }
   }
 }

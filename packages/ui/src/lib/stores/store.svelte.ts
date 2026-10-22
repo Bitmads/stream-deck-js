@@ -1,112 +1,57 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type {
+  ActionDef, TextConfig, IconConfig, KeyAssignment, SceneTrigger, EncoderConfig,
+  StripItem, StripConfig, Scene, DeviceInfo, DeviceConfig, SavedProfile, RuntimeOverride, ControllerKind,
+} from "../types/profile";
+import * as tpl from "../utils/template";
+import { makeContext, parseContext, type ParsedContext } from "../utils/context";
+import {
+  NONE_ACTION, parseProfileJson, cloneJson, createEmptyScene, createDeviceConfig,
+  legacyDeviceConfig, serializeProfile,
+} from "../utils/profile";
+import { setDefaultVarLookup } from "../utils/render-key";
 
+// Persisted model types live in ../types/profile (importable from Node); re-exported for existing imports.
+export type {
+  ActionDef, TextConfig, IconConfig, KeyAssignment, SceneTrigger, EncoderConfig,
+  StripItem, StripConfig, Scene, DeviceInfo, DeviceConfig, SavedProfile, RuntimeOverride, ControllerKind,
+} from "../types/profile";
+export type { ParsedContext } from "../utils/context";
 
-// ─── Types ───────────────────────────────────────────────────
+/** Where an action runs: the device (and scene/key) it was triggered from. */
+export interface ActionContext { serial: string; sceneId?: string; keyIndex?: number; }
 
-export interface ActionDef { id: string; label: string; icon: string; color: string; }
+export type ActionExecutor = (settings: Record<string, string>, ctx?: ActionContext) => Promise<void>;
 
-export interface TextConfig {
-  text: string; fontFamily: string; fontSize: number;
-  fontWeight: "normal" | "bold"; fontStyle: "normal" | "italic"; color: string;
-  hAlign: "left" | "center" | "right"; vAlign: "top" | "middle" | "bottom";
-  anchor: "start" | "center" | "end"; hidden?: boolean;
-  wrap?: "none" | "word" | "char";
-  shadow?: { color: string; blur: number; offsetX: number; offsetY: number };
-  stroke?: { color: string; width: number };
-  x?: number; y?: number; useAbsolutePos: boolean;
-}
+interface UndoEntry { serial: string; sceneId: string; keys: Record<string, KeyAssignment>; }
 
-export interface IconConfig {
-  setId: string; iconName: string; svgBody: string; color: string; size: number; viewBox: string;
-  variable?: string; value?: string;
-}
-
-export interface KeyAssignment {
-  action: ActionDef; settings: Record<string, string>; backgroundColor: string;
-  imagePath?: string; imageDataUrl?: string; imageUrl?: string; imageFit?: "fill" | "cover" | "contain" | "none";
-  text?: TextConfig; texts?: TextConfig[]; icon?: IconConfig; icons?: IconConfig[]; pinned?: boolean;
-}
-
-export interface SceneTrigger {
-  type: "window" | "key_press" | "manual";
-  app_name?: string; window_title?: string; priority?: number;
-  key_index?: number; mode?: "push" | "switch";
-}
-
-export interface EncoderConfig {
-  pressAction: ActionDef; pressSettings: Record<string, string>;
-  rotateAction: ActionDef; rotateSettings: Record<string, string>;
-  label: string;
-  value: string;  // number or {{$var}}
-  min: string;    // number or {{$var}}
-  max: string;    // number or {{$var}}
-  step: number;
-}
-
-export interface StripItem {
-  id: string;
-  x: number; y: number; w: number; h: number;
-  // Visual (same concepts as KeyAssignment)
-  backgroundColor?: string;  // {{$var|rgb}} supported
-  imageDataUrl?: string;
-  imageUrl?: string;
-  imageFit?: "fill" | "cover" | "contain" | "none";
-  icon?: IconConfig;
-  texts?: TextConfig[];
-  // Bar indicator (progress fill)
-  bar?: {
-    value: string;     // {{$var}} or number — current value
-    min: string;       // min range
-    max: string;       // max range
-    color: string;     // fill color, supports {{$var|rgb}}
-    position: "bottom" | "full" | "left";  // where the bar renders
-    height: number;    // bar height in px (for bottom/top position)
-  };
-  // Gesture actions
-  tapAction?: ActionDef;
-  tapSettings?: Record<string, string>;
-  longPressAction?: ActionDef;
-  longPressSettings?: Record<string, string>;
-  swipeAction?: ActionDef;
-  swipeSettings?: Record<string, string>;
-}
-
-export interface StripConfig {
-  backgroundColor: string;
-  items: StripItem[];
-}
-
-export interface Scene {
-  id: string; name: string; keys: Record<string, KeyAssignment>;
-  encoders?: Record<string, EncoderConfig>; strip?: StripConfig; triggers: SceneTrigger[];
-}
-
-export interface DeviceInfo {
-  serial: string; model: string; model_id: string; columns: number; rows: number;
-  key_size: number; has_lcd_strip: boolean; has_dials: boolean;
-  encoder_count: number; lcd_width: number; lcd_height: number;
-}
-
-interface DeviceConfig { scenes: Record<string, Scene>; activeSceneId: string | null; }
-interface SavedProfile {
-  name: string; devices?: Record<string, DeviceConfig>;
-  scenes?: Record<string, Scene>; activeSceneId?: string | null;
-  favorites: string[]; recent: string[];
-}
-interface UndoEntry { sceneId: string; keys: Record<string, KeyAssignment>; }
-
-const NONE_ACTION: ActionDef = { id: "none", label: "None", icon: "", color: "#333" };
 const MAX_UNDO = 50;
-const TEMPLATE_RE = /\{\{([^}]+)\}\}/g;
+const SAVE_DEBOUNCE_MS = 500;
+const LOCAL_SUPPRESS_MS = 500;
+const DEFAULT_STRIP: StripConfig = { backgroundColor: "#0a0a1a", items: [] };
+const EMPTY_SCENES: Record<string, Scene> = Object.freeze({}) as Record<string, Scene>;
+/** Error prefix of save_json_file when the expected stamp no longer matches (storage.rs CHANGED_ON_DISK). */
+const CHANGED_ON_DISK = "changed on disk";
 
-/** All action types are now registered by plugins via registerActionType(). */
+/** Settings whose value is a JSON document consumed by its executor, never template-resolved here. */
+// JSON blobs are passed raw: their executors parse them first and resolve templates per string
+// value, so a variable containing a quote cannot break the JSON.
+const RAW_SETTINGS: Record<string, string[]> = {
+  "multi-action": ["steps"],
+  "ha-service": ["ha_service_data"],
+  "ha-custom": ["ha_custom_json"],
+};
+/** Settings whose substituted variable values are shell-quoted (they are run by `sh -c`). */
+const SHELL_SETTINGS: Record<string, string[]> = { command: ["command"], launch: ["target"] };
+
+// ─── Action registry (filled by plugins) ─────────────────────
 
 let pluginActions = $state<ActionDef[]>([]);
-const pluginExecutors: Record<string, (settings: Record<string, string>) => Promise<void>> = {};
+const pluginExecutors: Record<string, ActionExecutor> = {};
 
 /** Plugins call this to register new action types. */
-export function registerActionType(action: ActionDef, executor?: (settings: Record<string, string>) => Promise<void>) {
+export function registerActionType(action: ActionDef, executor?: ActionExecutor) {
   if (!pluginActions.find(a => a.id === action.id)) {
     pluginActions = [...pluginActions, action];
   }
@@ -119,15 +64,19 @@ export function unregisterActionType(actionId: string) {
   delete pluginExecutors[actionId];
 }
 
-/** Execute a plugin-registered action. Returns true if handled. */
-export async function executePluginAction(actionId: string, settings: Record<string, string>): Promise<boolean> {
+/** Execute a plugin-registered action with already-resolved settings. Returns true if handled. */
+export async function executePluginAction(actionId: string, settings: Record<string, string>, ctx?: ActionContext): Promise<boolean> {
   const executor = pluginExecutors[actionId];
-  if (executor) { await executor(settings); return true; }
+  if (executor) { await executor(settings, ctx); return true; }
   return false;
 }
 
 /** All registered action types (from plugins). */
 export const ACTION_TYPES = { get all() { return pluginActions; } };
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 // ─── The Store ───────────────────────────────────────────────
 
@@ -137,19 +86,34 @@ class AppStore {
   selectedDevice = $state<DeviceInfo | null>(null);
   deviceLoading = $state(false);
   deviceError = $state<string | null>(null);
+  /** Bumped whenever a device (re)opens or the profile reloads: device sync then re-sends everything. */
+  deviceEpochs = $state<Record<string, number>>({});
 
-  // ── Scenes ──
-  scenes = $state<Record<string, Scene>>({});
-  activeSceneId = $state<string | null>(null);
-  sceneStack = $state<string[]>([]);
+  // ── Profile: every device's scenes (single source of truth, persisted) ──
+  activeProfileName = $state("default");
+  profileDevices = $state<Record<string, DeviceConfig>>({});
+  /** Device whose scenes the editor shows/edits: the selected device, or the last one selected. */
+  boundSerial = $state<string | null>(null);
+  /** Runtime back-navigation stacks per device (not persisted). */
+  sceneStacks = $state<Record<string, string[]>>({});
+  /** Last profile load/reload error (bad JSON or shape); null after a successful load. */
+  loadError = $state<string | null>(null);
+  /** Last action/save error, for display. */
+  lastError = $state<string | null>(null);
+  /** A failed initial load blocks saving, so a broken file is never overwritten by an empty profile. */
+  private saveBlocked = false;
+  /** Legacy single-device layout waiting for the first device to bind. */
+  private pendingLegacy: DeviceConfig | null = null;
+  /**
+   * Stamp of each profile file as last loaded or saved by this window. Saves pass it as
+   * `expectedStamp`, so a stale autosave never overwrites a file another writer (API PUT) replaced.
+   */
+  private fileStamps: Record<string, string> = {};
 
-  // ── Selection (key XOR encoder) ──
+  // ── Selection (key XOR encoder XOR strip item) ──
   selectedKeyIndex = $state<number | null>(null);
   selectedEncoderIndex = $state<number | null>(null);
-
-  // ── Profile ──
-  activeProfileName = $state("default");
-  profileDevices: Record<string, DeviceConfig> = {};
+  selectedStripItemId = $state<string | null>(null);
 
   // ── Favorites / Recent ──
   recentActions = $state<string[]>([]);
@@ -157,7 +121,11 @@ class AppStore {
 
   // ── Variables ──
   variables = $state<Record<string, string>>({});
+  /** Bumped on every variable change; only for consumers that need the whole map (getAllVariables). */
   varRevision = $state(0);
+
+  // ── Runtime overrides (plugins, timers, counters): keyed by context id ──
+  runtimeOverrides = $state<Record<string, RuntimeOverride>>({});
 
   // ── Undo / Redo ──
   undoStack = $state<UndoEntry[]>([]);
@@ -166,36 +134,97 @@ class AppStore {
   // ── Internal ──
   revision = $state(0);
   private saveTimer: number | null = null;
-  private activeTimers: Record<string, number> = {};
-  private lastStripVarRev = 0;
+  private timers: Record<string, number> = {};
+  private encoderActionTimers: Record<string, number> = {};
+  private encoderDeltaAcc: Record<string, number> = {};
+  private locallySetVars: Record<string, number> = {};
+  private pendingRemote: Record<string, string> = {};
+  private pendingRemoteTimers: Record<string, number> = {};
+
+  /** Variable lookup for template resolution. Reads only the named variable (fine-grained reactivity). */
+  readonly lookupVar = (name: string): string | undefined => this.variables[name];
 
   constructor() {
-    const id = crypto.randomUUID();
-    this.scenes[id] = { id, name: "Default", keys: {}, triggers: [{ type: "manual" }] };
-    this.activeSceneId = id;
-    this.sceneStack = [id];
+    setDefaultVarLookup(this.lookupVar);
   }
 
   // ═══ Device Methods ════════════════════════════════════════
 
   get currentSerial(): string | null { return this.selectedDevice?.serial ?? null; }
 
+  /** Serials of all connected devices. */
+  getConnectedSerials(): string[] { return this.devices.map(d => d.serial); }
+
+  getDevice(serial: string): DeviceInfo | undefined { return this.devices.find(d => d.serial === serial); }
+
+  private bumpEpoch(serial: string) {
+    this.deviceEpochs[serial] = (this.deviceEpochs[serial] ?? 0) + 1;
+  }
+
+  private async openDevice(serial: string): Promise<boolean> {
+    try {
+      await invoke("open_device", { serial });
+      this.bumpEpoch(serial);
+      await this.applyBrightness(serial);
+      return true;
+    } catch (e) {
+      console.error(`Failed to open device ${serial}:`, e);
+      return false;
+    }
+  }
+
+  /** Saved brightness of a device (undefined when never set). */
+  getDeviceBrightness(serial: string): number | undefined {
+    return this.profileDevices[serial]?.brightness;
+  }
+
+  /** Set, apply and persist a device's brightness. */
+  async setDeviceBrightness(serial: string, percent: number) {
+    const value = Math.max(0, Math.min(100, Math.round(percent)));
+    this.ensureDeviceConfig(serial).brightness = value;
+    this.scheduleSave();
+    await this.applyBrightness(serial);
+  }
+
+  /** Send the saved brightness to the device, if one is saved. Errors are logged, not thrown. */
+  private async applyBrightness(serial: string) {
+    const percent = this.profileDevices[serial]?.brightness;
+    if (percent === undefined) return;
+    try {
+      await invoke("set_brightness", { serial, percent });
+    } catch (e) {
+      console.warn(`Failed to set brightness of ${serial}:`, e);
+    }
+  }
+
   async refreshDevices() {
     this.deviceLoading = true;
     this.deviceError = null;
     try {
       const newDevices = await invoke<DeviceInfo[]>("list_devices");
-      const prevCount = this.devices.length;
       const changed = newDevices.length !== this.devices.length ||
         newDevices.some((d, i) => d.serial !== this.devices[i]?.serial);
-      if (changed) this.devices = newDevices;
+      // Same serials, but the backend reopened a handle (replug, USB reset or failed I/O within one
+      // poll): that deck lost its images and brightness and must be repainted.
+      const reopened = changed ? [] : newDevices.filter((d, i) =>
+        (d.open_generation ?? 0) !== (this.devices[i]?.open_generation ?? 0));
+      if (changed) {
+        this.devices = newDevices;
+        // (Re)open every deck: new ones need a handle, existing ones may be stale after suspend/replug.
+        for (const d of newDevices) {
+          this.ensureDeviceConfig(d.serial);
+          await this.openDevice(d.serial);
+        }
+      } else if (reopened.length > 0) {
+        this.devices = newDevices;
+        for (const d of reopened) {
+          this.bumpEpoch(d.serial);
+          await this.applyBrightness(d.serial);
+        }
+      }
 
       if (this.devices.length > 0 && (!this.selectedDevice || !this.devices.find(d => d.serial === this.selectedDevice?.serial))) {
-        await this.selectDevice(this.devices[0]);
-      } else if (this.selectedDevice && changed && this.devices.find(d => d.serial === this.selectedDevice?.serial)) {
-        // Device list changed but our device is still there — re-open to refresh HID handle
-        // (handles suspend/resume where the handle goes stale)
-        await invoke("open_device", { serial: this.selectedDevice.serial }).catch(() => {});
+        await this.selectDevice(this.devices[0], !changed);
       }
 
       if (this.devices.length === 0 && this.selectedDevice) this.selectedDevice = null;
@@ -203,168 +232,128 @@ class AppStore {
     finally { this.deviceLoading = false; }
   }
 
-  async selectDevice(device: DeviceInfo) {
-    const prevSerial = this.selectedDevice?.serial ?? null;
+  /** Select a device for editing. `open` re-opens its HID handle (skip when refreshDevices just did). */
+  async selectDevice(device: DeviceInfo, open = true) {
     this.selectedDevice = device;
-    await invoke("open_device", { serial: device.serial }).catch(() => {});
-    this.switchToDevice(device.serial, prevSerial);
+    if (open) await this.openDevice(device.serial);
+    this.bindDevice(device.serial);
+  }
+
+  /** Make `serial` the device the editor works on. */
+  bindDevice(serial: string) {
+    this.ensureDeviceConfig(serial);
+    if (this.boundSerial !== serial) {
+      this.boundSerial = serial;
+      this.selectedKeyIndex = null;
+      this.selectedEncoderIndex = null;
+      this.selectedStripItemId = null;
+      this.revision++;
+    }
+  }
+
+  /** Kept for existing callers: switching the edited device no longer copies scenes around. */
+  switchToDevice(serial: string, _prevSerial?: string | null) {
+    this.bindDevice(serial);
+  }
+
+  /** Make sure a device has a config (legacy layout or a fresh Default scene). Not saved until an edit. */
+  private ensureDeviceConfig(serial: string): DeviceConfig {
+    let config = this.profileDevices[serial];
+    if (!config) {
+      if (this.pendingLegacy) {
+        this.profileDevices[serial] = this.pendingLegacy;
+        this.pendingLegacy = null;
+        this.scheduleSave(); // persist the migration
+      } else {
+        this.profileDevices[serial] = createDeviceConfig();
+      }
+      config = this.profileDevices[serial];
+    }
+    if (!config.activeSceneId || !config.scenes[config.activeSceneId]) {
+      config.activeSceneId = Object.keys(config.scenes)[0] ?? null;
+    }
+    if (!this.sceneStacks[serial] && config.activeSceneId) this.sceneStacks[serial] = [config.activeSceneId];
+    return config;
   }
 
   // ═══ Variable Methods ══════════════════════════════════════
 
   getVariable(name: string): string {
-    void this.varRevision;
     return this.variables[name] ?? "";
   }
 
-  /** Track recently locally-set variables to suppress HA echo-back */
-  private locallySetVars: Record<string, number> = {};
-  private LOCAL_SUPPRESS_MS = 500;
-
   setVariable(name: string, value: string) {
-    if (this.variables[name] === value) return;
-    this.variables[name] = value;
-    this.varRevision++;
     this.locallySetVars[name] = Date.now();
-    invoke("set_variable", { name, value }).catch(() => {});
-    // Trigger strip sync if this variable is used by the strip
-    if (this.selectedDevice?.has_lcd_strip && this.stripUsesVariable(name)) {
-      clearTimeout(this.stripSyncDebounce);
-      this.stripSyncDebounce = window.setTimeout(() => this.syncStrip(), 50);
-    }
+    if (this.variables[name] === value) return;
+    this.applyVariable(name, value);
+    invoke("set_variable", { name, value }).catch((e) => console.error(`set_variable ${name} failed:`, e));
   }
 
-  private stripSyncDebounce: number | undefined;
+  /**
+   * Apply a value coming from outside (backend, HA, time). Remote updates arriving within
+   * LOCAL_SUPPRESS_MS of a local setVariable are held (echo suppression) and the latest one is
+   * applied when the window ends, so an authoritative remote value is never lost.
+   */
   setVariableLocal(name: string, value: string) {
-    if (this.variables[name] === value) return;
-    // Suppress remote updates for variables that were just set locally (prevents echo-back flicker)
     const lastLocal = this.locallySetVars[name];
-    if (lastLocal && Date.now() - lastLocal < this.LOCAL_SUPPRESS_MS) return;
+    if (lastLocal !== undefined) {
+      const remaining = lastLocal + LOCAL_SUPPRESS_MS - Date.now();
+      if (remaining > 0) {
+        this.pendingRemote[name] = value;
+        if (this.pendingRemoteTimers[name] === undefined) {
+          this.pendingRemoteTimers[name] = window.setTimeout(() => this.flushPendingRemote(name), remaining + 10);
+        }
+        return;
+      }
+      delete this.locallySetVars[name];
+    }
+    if (this.variables[name] === value) return;
+    this.applyVariable(name, value);
+  }
+
+  private flushPendingRemote(name: string) {
+    delete this.pendingRemoteTimers[name];
+    if (!(name in this.pendingRemote)) return;
+    const value = this.pendingRemote[name];
+    delete this.pendingRemote[name];
+    this.setVariableLocal(name, value);
+  }
+
+  private applyVariable(name: string, value: string) {
     this.variables[name] = value;
     this.varRevision++;
-    // Only sync strip if this variable is used by any strip item
-    if (this.selectedDevice?.has_lcd_strip && this.stripUsesVariable(name)) {
-      clearTimeout(this.stripSyncDebounce);
-      this.stripSyncDebounce = window.setTimeout(() => this.syncStrip(), 50);
-    }
-  }
-
-  private stripUsesVariable(varName: string): boolean {
-    const cfg = this.activeScene?.strip;
-    if (!cfg) return false;
-    const needle = varName;
-    for (const item of cfg.items) {
-      if (item.backgroundColor?.includes(needle)) return true;
-      if (item.bar?.value?.includes(needle) || item.bar?.color?.includes(needle)) return true;
-      if (item.texts) {
-        for (const t of item.texts) {
-          if (t.text?.includes(needle) || t.color?.includes(needle)) return true;
-        }
-      }
-    }
-    return false;
   }
 
   deleteVariable(name: string) {
     delete this.variables[name];
     this.varRevision++;
-    invoke("delete_variable", { name }).catch(() => {});
+    invoke("delete_variable", { name }).catch((e) => console.error(`delete_variable ${name} failed:`, e));
   }
 
-  private static FILTERS: Record<string, (val: string) => string> = {
-    kelvin: (v) => {
-      const k = parseFloat(v) / 100;
-      let r: number, g: number, b: number;
-      if (k <= 66) { r = 255; g = Math.min(255, Math.max(0, 99.47 * Math.log(k) - 161.12)); }
-      else { r = Math.min(255, Math.max(0, 329.7 * Math.pow(k - 60, -0.1332))); g = Math.min(255, Math.max(0, 288.12 * Math.pow(k - 60, -0.0755))); }
-      if (k >= 66) b = 255;
-      else if (k <= 19) b = 0;
-      else b = Math.min(255, Math.max(0, 138.52 * Math.log(k - 10) - 305.04));
-      return `#${Math.round(r).toString(16).padStart(2,'0')}${Math.round(g).toString(16).padStart(2,'0')}${Math.round(b).toString(16).padStart(2,'0')}`;
-    },
-    rgb: (v) => {
-      const parts = v.split(",").map(s => parseInt(s.trim()));
-      if (parts.length >= 3) return `#${parts.slice(0,3).map(n => (n||0).toString(16).padStart(2,'0')).join('')}`;
-      return v;
-    },
-    round: (v) => String(Math.round(parseFloat(v) || 0)),
-    floor: (v) => String(Math.floor(parseFloat(v) || 0)),
-    ceil: (v) => String(Math.ceil(parseFloat(v) || 0)),
-    percent: (v) => `${Math.round((parseFloat(v) || 0) * 100)}%`,
-    upper: (v) => v.toUpperCase(),
-    lower: (v) => v.toLowerCase(),
-    f2c: (v) => String((parseFloat(v) - 32) * 5 / 9),
-    c2f: (v) => String(parseFloat(v) * 9 / 5 + 32),
-    round1: (v) => (parseFloat(v) || 0).toFixed(1),
-    round2: (v) => (parseFloat(v) || 0).toFixed(2),
-    abs: (v) => String(Math.abs(parseFloat(v) || 0)),
-  };
+  /** Remove a variable locally only (e.g. the backend reported it deleted). */
+  deleteVariableLocal(name: string) {
+    if (!(name in this.variables)) return;
+    delete this.variables[name];
+    this.varRevision++;
+  }
 
   resolveTemplate(text: string): string {
-    void this.varRevision;
-    return text.replace(TEMPLATE_RE, (_, expr) => {
-      const parts = expr.trim().split("|");
-      const name = parts[0].replace(/^\$/, "").trim();
-      const rawVal = this.variables[name];
-      if (rawVal === undefined) {
-        const fallback = parts.length > 1 ? parts.slice(1).join("|") : `{{${expr.trim()}}}`;
-        return fallback;
-      }
-      // Apply filters if any
-      let result = rawVal;
-      for (let i = 1; i < parts.length; i++) {
-        const filterPart = parts[i].trim();
-        // replace filter: replace:search=replacement (string) or replace:/regex/=replacement
-        if (filterPart.startsWith("replace:")) {
-          const rest = filterPart.substring(8);
-          const eq = rest.indexOf("=");
-          const search = eq >= 0 ? rest.substring(0, eq) : rest;
-          const replacement = eq >= 0 ? rest.substring(eq + 1) : "";
-          if (search.startsWith("/") && search.lastIndexOf("/") > 0) {
-            const lastSlash = search.lastIndexOf("/");
-            const pattern = search.substring(1, lastSlash);
-            const flags = search.substring(lastSlash + 1) || "g";
-            try { result = result.replace(new RegExp(pattern, flags), replacement); } catch {}
-          } else {
-            result = result.split(search).join(replacement);
-          }
-          continue;
-        }
-        // map filter: map:key1=val1:key2=val2:*=default
-        if (filterPart.startsWith("map:")) {
-          const entries = filterPart.substring(4).split(":");
-          let matched = false;
-          for (const entry of entries) {
-            const eq = entry.indexOf("=");
-            if (eq < 0) continue;
-            const key = entry.substring(0, eq);
-            const val = entry.substring(eq + 1);
-            if (key === "*") { result = val; matched = true; break; }
-            if (result === key) { result = val; matched = true; break; }
-          }
-          continue;
-        }
-        const filter = AppStore.FILTERS[filterPart];
-        if (filter) result = filter(result);
-        else return result;
-      }
-      return result;
-    });
+    return tpl.resolveTemplate(text, this.lookupVar);
   }
 
-  hasTemplates(text: string): boolean { return text.includes("{{"); }
+  hasTemplates(text: string): boolean { return tpl.hasTemplates(text); }
 
-  extractVariableNames(text: string): string[] {
-    const names: string[] = [];
-    const re = new RegExp(TEMPLATE_RE.source, TEMPLATE_RE.flags);
-    let match;
-    while ((match = re.exec(text)) !== null) {
-      names.push(match[1].trim().replace(/^\$/, "").split("|")[0].trim());
-    }
-    return names;
+  extractVariableNames(text: string): string[] { return tpl.extractVariableNames(text); }
+
+  /** Resolve a number or {{$var}} template; `fallback` when missing or not numeric. */
+  resolveNumber(input: string | number | undefined, fallback: number): number {
+    return tpl.resolveNumber(input, this.lookupVar, fallback);
   }
+
+  private timeInterval: number | undefined;
 
   initVariables() {
+    if (this.timeInterval !== undefined) return;
     const updateTime = () => {
       const now = new Date();
       this.setVariableLocal("time.now", now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -374,10 +363,15 @@ class AppStore {
       this.setVariableLocal("time.seconds", String(now.getSeconds()).padStart(2, "0"));
     };
     updateTime();
-    setInterval(updateTime, 1000);
+    this.timeInterval = window.setInterval(updateTime, 1000);
 
-    listen<{ name: string; value: string }>("variable-changed", (e) => {
-      this.setVariableLocal(e.payload.name, e.payload.value);
+    listen<{ name: string; value: string | null; deleted?: boolean }>("variable-changed", (e) => {
+      const { name, value, deleted } = e.payload;
+      if (deleted || value === null || value === undefined) this.deleteVariableLocal(name);
+      else this.setVariableLocal(name, value);
+    });
+    listen<{ name: string }>("variable-deleted", (e) => {
+      this.deleteVariableLocal(e.payload.name);
     });
     listen<{ app_name: string; title: string }>("active-window-changed", (e) => {
       this.setVariableLocal("window.title", e.payload.title);
@@ -388,176 +382,398 @@ class AppStore {
   // ═══ Persistence ═══════════════════════════════════════════
 
   private scheduleSave() {
-    if (this.saveTimer) clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
-      const serial = this.currentSerial;
-      if (!serial) return;
-      this.profileDevices[serial] = JSON.parse(JSON.stringify({ scenes: this.scenes, activeSceneId: this.activeSceneId }));
-      const data: SavedProfile = {
-        name: this.activeProfileName,
-        devices: { ...this.profileDevices },
-        favorites: this.favoriteActions,
-        recent: this.recentActions,
-      };
-      invoke("save_json_file", { filename: `profile_${this.activeProfileName}`, content: JSON.stringify(data) }).catch(() => {});
-    }, 500);
+    if (this.saveBlocked) return;
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = window.setTimeout(() => { void this.flushSave(); }, SAVE_DEBOUNCE_MS);
   }
 
-  async loadProfile(name: string) {
+  private cancelPendingSave() {
+    if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+  }
+
+  /** Write the profile now if a save is pending (or `force`). Errors are surfaced in lastError. */
+  async flushSave(force = false): Promise<void> {
+    const pending = this.saveTimer !== null;
+    this.cancelPendingSave();
+    if (this.saveBlocked || (!pending && !force)) return;
+    const name = this.activeProfileName;
+    const content = serializeProfile(name, this.profileDevices, this.favoriteActions, this.recentActions, this.pendingLegacy);
+    const filename = `profile_${name}`;
     try {
-      const json = await invoke<string | null>("load_json_file", { filename: `profile_${name}` });
-      if (!json) return;
-      const data: SavedProfile = JSON.parse(json);
-      if (data.devices) {
-        this.profileDevices = data.devices;
-      } else if (data.scenes) {
-        const serial = this.currentSerial;
-        if (serial) this.profileDevices = { [serial]: { scenes: data.scenes, activeSceneId: data.activeSceneId ?? null } };
+      const stamp = await invoke<string | null>("save_json_file", { filename, content, expectedStamp: this.fileStamps[filename] ?? null });
+      if (typeof stamp === "string") this.fileStamps[filename] = stamp;
+    } catch (e) {
+      if (errorMessage(e).startsWith(CHANGED_ON_DISK)) {
+        // Someone else (REST API) replaced the file since this window loaded it: theirs wins.
+        console.warn(`Profile "${name}" changed on disk; reloading instead of overwriting it`);
+        delete this.fileStamps[filename];
+        if (name === this.activeProfileName) await this.reloadProfileFromDisk(name);
+        return;
       }
-      this.favoriteActions = data.favorites || [];
-      this.recentActions = data.recent || [];
-      this.activeProfileName = name;
-      if (this.currentSerial) this.loadDeviceScenes(this.currentSerial);
-    } catch (e) { console.error("Failed to load profile:", e); }
+      console.error("Failed to save profile:", e);
+      this.lastError = `Failed to save profile "${name}": ${errorMessage(e)}`;
+    }
   }
 
-  private loadDeviceScenes(serial: string) {
-    const config = this.profileDevices[serial];
-    Object.keys(this.scenes).forEach(k => delete this.scenes[k]);
-    if (config) {
-      const cloned = JSON.parse(JSON.stringify(config.scenes));
-      Object.assign(this.scenes, cloned);
-      this.activeSceneId = config.activeSceneId || Object.keys(this.scenes)[0] || null;
-    } else {
-      const id = crypto.randomUUID();
-      this.scenes[id] = { id, name: "Default", keys: {}, triggers: [{ type: "manual" }] };
-      this.activeSceneId = id;
-    }
-    this.sceneStack = this.activeSceneId ? [this.activeSceneId] : [];
+  /** Read + validate a stored profile. null if the file does not exist; throws on bad JSON/shape. */
+  private async readProfile(name: string): Promise<SavedProfile | null> {
+    const filename = `profile_${name}`;
+    const file = await invoke<{ content: string; stamp: string } | null>("load_json_file_stamped", { filename });
+    if (file === null || file === undefined) { delete this.fileStamps[filename]; return null; }
+    const profile = parseProfileJson(file.content, name);
+    this.fileStamps[filename] = file.stamp;
+    return profile;
+  }
+
+  /**
+   * Replace all profile state with `p` (already validated). Plugin overrides are kept on a reload of
+   * the same profile (their contexts stay valid when scene ids are unchanged); timers always stop.
+   */
+  private applyProfile(p: SavedProfile, name: string, keepOverrides = false) {
+    this.stopAllTimers();
+    if (!keepOverrides) this.runtimeOverrides = {};
+    this.profileDevices = p.devices ?? {};
+    this.pendingLegacy = legacyDeviceConfig(p);
+    this.favoriteActions = p.favorites || [];
+    this.recentActions = p.recent || [];
+    this.activeProfileName = name;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.sceneStacks = {};
+    this.loadError = null;
+    this.saveBlocked = false;
+
+    for (const d of this.devices) this.ensureDeviceConfig(d.serial);
+    const bind = this.selectedDevice?.serial ?? this.boundSerial;
+    if (bind) this.ensureDeviceConfig(bind);
     this.selectedKeyIndex = null;
     this.selectedEncoderIndex = null;
+    this.selectedStripItemId = null;
+    for (const d of this.devices) {
+      this.bumpEpoch(d.serial);
+      void this.applyBrightness(d.serial);
+    }
     this.revision++;
-    this.syncStrip();
   }
 
-  switchToDevice(serial: string, prevSerial?: string | null) {
-    const prev = prevSerial ?? this.currentSerial;
-    if (prev && prev !== serial) this.profileDevices[prev] = JSON.parse(JSON.stringify({ scenes: this.scenes, activeSceneId: this.activeSceneId }));
-    this.loadDeviceScenes(serial);
-    // Don't scheduleSave here — only user mutations should trigger saves
+  /** Switch to another stored profile (pending edits of the current one are saved first). */
+  async loadProfile(name: string): Promise<boolean> {
+    await this.flushSave();
+    try {
+      const p = await this.readProfile(name);
+      if (!p) throw new Error(`profile_${name}.json does not exist`);
+      this.applyProfile(p, name);
+      await this.persistActiveProfile(name);
+      return true;
+    } catch (e) {
+      this.loadError = `Failed to load profile "${name}": ${errorMessage(e)}`;
+      console.error(this.loadError);
+      return false;
+    }
+  }
+
+  /**
+   * Re-read a profile that was changed on disk (API PUT / external tool) and apply it.
+   * A pending debounced save is cancelled so it cannot overwrite the new file. On any read,
+   * parse or shape error the current in-memory state is kept, loadError is set and nothing is saved.
+   */
+  async reloadProfileFromDisk(name: string = this.activeProfileName): Promise<boolean> {
+    this.cancelPendingSave();
+    try {
+      const p = await this.readProfile(name);
+      if (!p) throw new Error(`profile_${name}.json does not exist`);
+      const changedName = name !== this.activeProfileName;
+      this.applyProfile(p, name, !changedName);
+      if (changedName) await this.persistActiveProfile(name);
+      return true;
+    } catch (e) {
+      this.loadError = `Failed to reload profile "${name}": ${errorMessage(e)}`;
+      console.error(this.loadError);
+      return false;
+    }
   }
 
   async listProfiles(): Promise<string[]> {
     try {
       const files = await invoke<string[]>("list_json_files");
-      return files.filter(f => f.startsWith("profile_")).map(f => f.replace("profile_", ""));
-    } catch { return []; }
+      return files.filter(f => f.startsWith("profile_")).map(f => f.substring("profile_".length));
+    } catch (e) {
+      console.error("Failed to list profiles:", e);
+      return [];
+    }
   }
 
+  /** Create a new empty profile and make it active (pending edits of the current one are saved first). */
   async createProfile(name: string) {
+    await this.flushSave();
+    this.stopAllTimers();
+    this.runtimeOverrides = {};
     this.activeProfileName = name;
-    Object.keys(this.scenes).forEach(k => delete this.scenes[k]);
-    const id = crypto.randomUUID();
-    this.scenes[id] = { id, name: "Default", keys: {}, triggers: [{ type: "manual" }] };
-    this.activeSceneId = id;
-    this.sceneStack = [id];
+    this.profileDevices = {};
+    this.pendingLegacy = null;
     this.favoriteActions = [];
+    this.recentActions = [];
+    this.undoStack = [];
+    this.redoStack = [];
+    this.sceneStacks = {};
+    this.loadError = null;
+    this.saveBlocked = false;
+    for (const d of this.devices) this.ensureDeviceConfig(d.serial);
+    if (this.boundSerial) this.ensureDeviceConfig(this.boundSerial);
+    this.selectedKeyIndex = null;
+    this.selectedEncoderIndex = null;
+    this.selectedStripItemId = null;
+    for (const d of this.devices) this.bumpEpoch(d.serial);
     this.revision++;
-    this.scheduleSave();
-      }
+    await this.flushSave(true);
+    await this.persistActiveProfile(name);
+  }
 
   async deleteProfile(name: string) {
-    await invoke("delete_json_file", { filename: `profile_${name}` }).catch(() => {});
+    if (name === this.activeProfileName) {
+      this.lastError = "The active profile cannot be deleted";
+      return;
+    }
+    try {
+      await invoke("delete_json_file", { filename: `profile_${name}` });
+    } catch (e) {
+      this.lastError = `Failed to delete profile "${name}": ${errorMessage(e)}`;
+    }
+  }
+
+  private async readAppSettings(): Promise<Record<string, unknown> | null> {
+    const raw = await invoke<string | null>("load_json_file", { filename: "app_settings" });
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  }
+
+  /** Remember the active profile in app_settings.json ("activeProfile"), preserving other keys. */
+  private async persistActiveProfile(name: string) {
+    try {
+      const settings = await this.readAppSettings();
+      if (!settings) { console.error("app_settings.json is not a JSON object; active profile not saved"); return; }
+      if (settings.activeProfile === name) return;
+      settings.activeProfile = name;
+      await invoke("save_json_file", { filename: "app_settings", content: JSON.stringify(settings, null, 2) });
+    } catch (e) {
+      console.error("Failed to persist active profile:", e);
+    }
+  }
+
+  private async readActiveProfileSetting(): Promise<string> {
+    try {
+      const settings = await this.readAppSettings();
+      const name = settings?.activeProfile;
+      if (typeof name === "string" && /^[A-Za-z0-9_-]+$/.test(name)) return name;
+    } catch (e) {
+      console.error("Failed to read app_settings.json:", e);
+    }
+    return "default";
   }
 
   async initStore() {
     if ((window as any).__osd_initialized) return;
     (window as any).__osd_initialized = true;
-    await this.loadProfile("default").catch(() => {});
+
+    let name = await this.readActiveProfileSetting();
+    try {
+      let p = await this.readProfile(name);
+      if (!p && name !== "default") {
+        console.warn(`Active profile "${name}" not found, falling back to "default"`);
+        name = "default";
+        p = await this.readProfile(name);
+      }
+      if (p) this.applyProfile(p, name);
+      else this.activeProfileName = name; // first run: start empty, first edit creates the file
+    } catch (e) {
+      // Keep the broken file intact: start empty and refuse to save until a profile loads.
+      this.activeProfileName = name;
+      this.saveBlocked = true;
+      this.loadError = `Failed to load profile "${name}": ${errorMessage(e)}. Changes will not be saved until the file is fixed and reloaded.`;
+      console.error(this.loadError);
+    }
+
+    // Do not lose a pending debounced save when the window is hidden to tray or the page unloads.
+    window.addEventListener("beforeunload", () => { void this.flushSave(); });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") void this.flushSave();
+    });
   }
 
-  // ═══ Scene Methods ═════════════════════════════════════════
+  // ═══ Scene access ══════════════════════════════════════════
+
+  getDeviceConfig(serial: string | null | undefined): DeviceConfig | undefined {
+    return serial ? this.profileDevices[serial] : undefined;
+  }
+
+  private get editConfig(): DeviceConfig | undefined { return this.getDeviceConfig(this.boundSerial); }
+
+  /** Scenes of the edited device. */
+  get scenes(): Record<string, Scene> { return this.editConfig?.scenes ?? EMPTY_SCENES; }
+  get activeSceneId(): string | null { return this.editConfig?.activeSceneId ?? null; }
+  get sceneStack(): string[] { return (this.boundSerial && this.sceneStacks[this.boundSerial]) || []; }
 
   private get activeScene(): Scene | undefined {
-    return this.activeSceneId ? this.scenes[this.activeSceneId] : undefined;
+    const c = this.editConfig;
+    return c?.activeSceneId ? c.scenes[c.activeSceneId] : undefined;
   }
 
-  getScenes(): Scene[] { void this.revision; return Object.values(this.scenes); }
-  getActiveScene(): Scene | undefined { void this.revision; return this.activeScene; }
-  getActiveSceneId(): string | null { return this.activeSceneId; }
-  getSceneStack(): string[] { return this.sceneStack; }
+  /** Active scene of `serial`, or of the edited device when omitted. */
+  getActiveScene(serial?: string): Scene | undefined {
+    if (serial === undefined) { void this.revision; return this.activeScene; }
+    const c = this.profileDevices[serial];
+    return c?.activeSceneId ? c.scenes[c.activeSceneId] : undefined;
+  }
 
+  getScenes(serial?: string): Scene[] {
+    void this.revision;
+    const c = serial === undefined ? this.editConfig : this.profileDevices[serial];
+    return c ? Object.values(c.scenes) : [];
+  }
+  getActiveSceneId(serial?: string): string | null {
+    return serial === undefined ? this.activeSceneId : (this.profileDevices[serial]?.activeSceneId ?? null);
+  }
+  getSceneStack(serial?: string): string[] {
+    return serial === undefined ? this.sceneStack : (this.sceneStacks[serial] ?? []);
+  }
+
+  /**
+   * Key shown at `index` of a scene: the scene's own key, else a pinned key of the same index from
+   * another scene of that device (back stack first, then scene order). Pinned keys are never copied.
+   */
+  getEffectiveKey(serial: string, sceneId: string, index: number): KeyAssignment | undefined {
+    return this.findKeyOwner(serial, sceneId, index)?.key;
+  }
+
+  private findKeyOwner(serial: string, sceneId: string, index: number): { scene: Scene; key: KeyAssignment; pinnedFrom: string | null } | undefined {
+    const config = this.profileDevices[serial];
+    const scene = config?.scenes[sceneId];
+    if (!config || !scene) return undefined;
+    const k = String(index);
+    const own = scene.keys[k];
+    if (own) return { scene, key: own, pinnedFrom: null };
+    const order = [...(this.sceneStacks[serial] ?? [])].reverse();
+    for (const id of Object.keys(config.scenes)) if (!order.includes(id)) order.push(id);
+    for (const id of order) {
+      if (id === sceneId) continue;
+      const s = config.scenes[id];
+      const key = s?.keys[k];
+      if (key?.pinned) return { scene: s, key, pinnedFrom: id };
+    }
+    return undefined;
+  }
+
+  // ═══ Scene Methods (edited device) ═════════════════════════
+
+  /** Create a scene on the edited device (with no device bound yet, the scene is returned unsaved). */
   createScene(name: string): Scene {
-    const id = crypto.randomUUID();
-    const scene: Scene = { id, name, keys: {}, triggers: [{ type: "manual" }] };
-    this.scenes[id] = scene;
+    const config = this.editConfig;
+    const scene = createEmptyScene(name);
+    if (!config) return scene;
+    config.scenes[scene.id] = scene;
     this.revision++;
-    return scene;
+    this.scheduleSave();
+    return config.scenes[scene.id];
   }
 
   deleteScene(id: string) {
-    if (Object.keys(this.scenes).length <= 1) return;
-    delete this.scenes[id];
-    if (this.activeSceneId === id) this.switchScene(Object.keys(this.scenes)[0]);
+    const config = this.editConfig;
+    const serial = this.boundSerial;
+    if (!config || !serial || !config.scenes[id] || Object.keys(config.scenes).length <= 1) return;
+    delete config.scenes[id];
+    this.stopTimers(serial, t => t.sceneId === id);
+    const stack = (this.sceneStacks[serial] ?? []).filter(s => s !== id);
+    if (config.activeSceneId === id) {
+      const next = stack[stack.length - 1] ?? Object.keys(config.scenes)[0];
+      config.activeSceneId = next;
+      this.sceneStacks[serial] = stack.length ? stack : [next];
+      this.selectedKeyIndex = null;
+      this.selectedEncoderIndex = null;
+      this.selectedStripItemId = null;
+    } else {
+      this.sceneStacks[serial] = stack.length ? stack : (config.activeSceneId ? [config.activeSceneId] : []);
+    }
+    this.undoStack = this.undoStack.filter(e => !(e.serial === serial && e.sceneId === id));
+    this.redoStack = this.redoStack.filter(e => !(e.serial === serial && e.sceneId === id));
     this.revision++;
     this.scheduleSave();
   }
 
   renameScene(id: string, name: string) {
-    if (this.scenes[id]) { this.scenes[id] = { ...this.scenes[id], name }; this.revision++; this.scheduleSave(); }
+    const scene = this.editConfig?.scenes[id];
+    if (scene) { scene.name = name; this.revision++; this.scheduleSave(); }
   }
 
   updateSceneTriggers(id: string, triggers: SceneTrigger[]) {
-    if (this.scenes[id]) { this.scenes[id] = { ...this.scenes[id], triggers }; this.revision++; this.scheduleSave(); }
+    const scene = this.editConfig?.scenes[id];
+    if (scene) { scene.triggers = cloneJson(triggers); this.revision++; this.scheduleSave(); }
   }
 
+  /** Full deep copy (keys, encoders, strip, triggers) under a new id. */
   duplicateScene(id: string): Scene | undefined {
-    const src = this.scenes[id];
-    if (!src) return;
-    const s = this.createScene(src.name + " (copy)");
-    s.keys = JSON.parse(JSON.stringify(src.keys));
-    this.scenes[s.id] = s;
+    const config = this.editConfig;
+    const src = config?.scenes[id];
+    if (!config || !src) return undefined;
+    const copy: Scene = cloneJson(src);
+    copy.id = crypto.randomUUID();
+    copy.name = src.name + " (copy)";
+    config.scenes[copy.id] = copy;
     this.revision++;
-    return s;
+    this.scheduleSave();
+    return config.scenes[copy.id];
   }
 
-  // ── Scene Navigation ──
+  // ── Scene Navigation (any device; defaults to the edited device) ──
 
-  switchScene(id: string, preserveSelection = false) {
-    if (!this.scenes[id] || this.activeSceneId === id) return;
-    this.carryPinnedKeys(this.activeSceneId, id);
-    this.activeSceneId = id;
-    this.sceneStack = [id];
-    if (!preserveSelection) { this.selectedKeyIndex = null; this.selectedEncoderIndex = null; }
-    this.revision++;
-      }
+  private navTarget(serial?: string | null): { serial: string; config: DeviceConfig } | null {
+    const s = serial ?? this.boundSerial;
+    if (!s) return null;
+    const config = this.profileDevices[s];
+    return config ? { serial: s, config } : null;
+  }
 
-  pushScene(id: string) {
-    if (!this.scenes[id]) return;
-    this.carryPinnedKeys(this.activeSceneId, id);
-    this.sceneStack = [...this.sceneStack, id];
-    this.activeSceneId = id;
-    this.selectedKeyIndex = null;
-    this.revision++;
-      }
-
-  popScene() {
-    if (this.sceneStack.length <= 1) return;
-    const prevId = this.activeSceneId;
-    this.sceneStack = this.sceneStack.slice(0, -1);
-    this.activeSceneId = this.sceneStack[this.sceneStack.length - 1];
-    this.carryPinnedKeys(prevId, this.activeSceneId);
-    this.selectedKeyIndex = null;
-    this.revision++;
-      }
-
-  private carryPinnedKeys(fromId: string | null, toId: string) {
-    if (!fromId) return;
-    const from = this.scenes[fromId], to = this.scenes[toId];
-    if (!from || !to) return;
-    for (const [idx, key] of Object.entries(from.keys)) {
-      if (key.pinned && !to.keys[idx]) to.keys[idx] = { ...key };
+  private afterSceneChange(serial: string, newSceneId: string | null, preserveSelection = false) {
+    this.stopTimers(serial, t => t.sceneId !== newSceneId);
+    if (serial === this.boundSerial && !preserveSelection) {
+      this.selectedKeyIndex = null;
+      this.selectedEncoderIndex = null;
+      this.selectedStripItemId = null;
     }
+    this.revision++;
+    this.scheduleSave(); // activeSceneId is persisted
+  }
+
+  switchScene(id: string, preserveSelection = false, serial?: string) {
+    const t = this.navTarget(serial);
+    if (!t || !t.config.scenes[id] || t.config.activeSceneId === id) return;
+    t.config.activeSceneId = id;
+    this.sceneStacks[t.serial] = [id];
+    this.afterSceneChange(t.serial, id, preserveSelection);
+  }
+
+  pushScene(id: string, serial?: string) {
+    const t = this.navTarget(serial);
+    if (!t || !t.config.scenes[id] || t.config.activeSceneId === id) return;
+    const stack = this.sceneStacks[t.serial] ?? (t.config.activeSceneId ? [t.config.activeSceneId] : []);
+    this.sceneStacks[t.serial] = [...stack, id];
+    t.config.activeSceneId = id;
+    this.afterSceneChange(t.serial, id);
+  }
+
+  popScene(serial?: string) {
+    const t = this.navTarget(serial);
+    if (!t) return;
+    // Drop entries of scenes deleted since they were pushed.
+    const stack = (this.sceneStacks[t.serial] ?? []).filter(id => !!t.config.scenes[id]);
+    if (stack.length <= 1) { this.sceneStacks[t.serial] = stack; return; }
+    stack.pop();
+    const prevId = stack[stack.length - 1];
+    this.sceneStacks[t.serial] = stack;
+    if (t.config.activeSceneId === prevId) return;
+    t.config.activeSceneId = prevId;
+    this.afterSceneChange(t.serial, prevId);
   }
 
   // ═══ Selection ═════════════════════════════════════════════
@@ -572,153 +788,166 @@ class AppStore {
     if (this.selectedEncoderIndex !== null) { this.selectedKeyIndex = null; this.selectedStripItemId = null; }
   }
 
-  // ═══ Key Methods ═══════════════════════════════════════════
+  // ═══ Key Methods (edited device's active scene) ════════════
 
+  /** Key shown at `index` on the edited device (including a pinned key from another scene). */
   getKeyAssignment(index: number): KeyAssignment | undefined {
     void this.revision;
-    return this.activeScene?.keys[String(index)];
+    const serial = this.boundSerial;
+    const sceneId = this.activeSceneId;
+    return serial && sceneId ? this.getEffectiveKey(serial, sceneId, index) : undefined;
   }
 
+  /** Key shown at `index` on any device's active scene. */
   getKeyAssignmentForDevice(serial: string, index: number): KeyAssignment | undefined {
-    if (serial === this.currentSerial) return this.activeScene?.keys[String(index)];
-    const config = this.profileDevices[serial];
-    if (!config) return undefined;
-    const sceneId = config.activeSceneId || Object.keys(config.scenes)[0];
-    return sceneId ? config.scenes[sceneId]?.keys[String(index)] : undefined;
+    const sceneId = this.profileDevices[serial]?.activeSceneId;
+    return sceneId ? this.getEffectiveKey(serial, sceneId, index) : undefined;
   }
 
-  getEncoderConfigForDevice(serial: string, index: number): EncoderConfig | undefined {
-    if (serial === this.currentSerial) return this.getEncoderConfig(index);
-    const config = this.profileDevices[serial];
-    if (!config) return undefined;
-    const sceneId = config.activeSceneId || Object.keys(config.scenes)[0];
-    return sceneId ? config.scenes[sceneId]?.encoders?.[String(index)] : undefined;
+  /** True when the key at `index` is shown from another scene (pinned there), not owned by this scene. */
+  isPinnedOverlay(index: number): boolean {
+    const serial = this.boundSerial, sceneId = this.activeSceneId;
+    if (!serial || !sceneId) return false;
+    return !!this.findKeyOwner(serial, sceneId, index)?.pinnedFrom;
   }
 
-  handleEncoderRotateForDevice(serial: string, index: number, delta: number) {
-    const cfg = this.getEncoderConfigForDevice(serial, index);
-    if (!cfg || cfg.rotateAction.id === "none") return;
-
-    const min = this.resolveNumber(cfg.min, 0);
-    const max = this.resolveNumber(cfg.max, 100);
-    const curVal = this.resolveNumber(cfg.value, 0);
-    const newVal = Math.max(min, Math.min(max, curVal + delta * cfg.step));
-
-    const varName = this.extractVarName(cfg.value);
-    if (varName) {
-      this.setVariable(varName, String(newVal));
-    }
-
-    const k = `${serial}:${index}`;
-    clearTimeout(this.encoderActionTimers[k]);
-    this.encoderActionTimers[k] = window.setTimeout(() => {
-      const resolved = this.resolveSettings(cfg.rotateSettings);
-      resolved.value = String(varName ? this.resolveNumber(cfg.value, 0) : newVal);
-      resolved.delta = String(delta);
-      resolved.min = String(min);
-      resolved.max = String(max);
-      this.executeAction(cfg.rotateAction.id, resolved);
-    }, 30);
+  /** The key edits at `index` apply to: this scene's own key, else the pinned key it shows. */
+  private keyRef(index: number): { scene: Scene; key: KeyAssignment } | undefined {
+    const serial = this.boundSerial, sceneId = this.activeSceneId;
+    if (!serial || !sceneId) return undefined;
+    const r = this.findKeyOwner(serial, sceneId, index);
+    return r ? { scene: r.scene, key: r.key } : undefined;
   }
 
-  handleEncoderPressForDevice(serial: string, index: number) {
-    const cfg = this.getEncoderConfigForDevice(serial, index);
-    if (!cfg || cfg.pressAction.id === "none") return;
-    const min = this.resolveNumber(cfg.min, 0);
-    const max = this.resolveNumber(cfg.max, 100);
-    const value = this.resolveNumber(cfg.value, 0);
-    const resolved = this.resolveSettings(cfg.pressSettings);
-    resolved.value = String(value);
-    resolved.min = String(min);
-    resolved.max = String(max);
-    this.executeAction(cfg.pressAction.id, resolved);
+  /** Like keyRef, creating an empty own key when the slot is empty. */
+  private ensureKey(index: number): { scene: Scene; key: KeyAssignment } | undefined {
+    const existing = this.keyRef(index);
+    if (existing) return existing;
+    const scene = this.activeScene;
+    if (!scene) return undefined;
+    scene.keys[String(index)] = { action: { ...NONE_ACTION }, settings: {}, backgroundColor: "#000000" };
+    return { scene, key: scene.keys[String(index)] };
   }
 
   assignAction(keyIndex: number, action: ActionDef) {
     const scene = this.activeScene;
-    if (!scene) return;
-    this.saveUndoState();
-    const existing = scene.keys[String(keyIndex)];
-    scene.keys[String(keyIndex)] = {
-      action, settings: this.getDefaultSettings(action.id),
-      backgroundColor: existing?.backgroundColor || "#000000",
-      imagePath: existing?.imagePath, imageDataUrl: existing?.imageDataUrl,
-      text: existing?.text, texts: existing?.texts, icon: existing?.icon, icons: existing?.icons,
+    const serial = this.boundSerial;
+    if (!scene || !serial) return;
+    this.saveUndoState(scene);
+    const k = String(keyIndex);
+    const own = scene.keys[k];
+    // Keep every visual/config field of the existing key (image URL, fit, pinned, texts, icons...).
+    const base: Partial<KeyAssignment> = own ? cloneJson(own) : {};
+    scene.keys[k] = {
+      ...base,
+      action: { ...action },
+      settings: this.getDefaultSettings(action.id),
+      backgroundColor: base.backgroundColor || "#000000",
     };
+    const ctx = makeContext(serial, scene.id, "Keypad", keyIndex);
+    this.stopTimer(ctx);
+    this.clearRuntimeOverride(ctx);
     this.trackRecent(action.id);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   swapKeys(from: number, to: number) {
     const scene = this.activeScene;
     if (!scene || from === to) return;
-    this.saveUndoState();
+    this.saveUndoState(scene);
     const a = scene.keys[String(from)], b = scene.keys[String(to)];
-    if (a) scene.keys[String(to)] = a; else delete scene.keys[String(to)];
-    if (b) scene.keys[String(from)] = b; else delete scene.keys[String(from)];
+    const ac = a ? cloneJson(a) : undefined, bc = b ? cloneJson(b) : undefined;
+    if (ac) scene.keys[String(to)] = ac; else delete scene.keys[String(to)];
+    if (bc) scene.keys[String(from)] = bc; else delete scene.keys[String(from)];
     this.revision++;
-    this.saveAndSync(from);
+    this.scheduleSave();
   }
 
   updateKeySetting(keyIndex: number, key: string, value: string) {
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.settings = { ...a.settings, [key]: value }; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.keyRef(keyIndex);
+    if (r) { r.key.settings = { ...r.key.settings, [key]: value }; this.revision++; this.scheduleSave(); }
+  }
+
+  /** Replace all settings of a key (e.g. from an action settings editor). */
+  setKeySettings(keyIndex: number, settings: Record<string, string>) {
+    const r = this.keyRef(keyIndex);
+    if (r) { r.key.settings = { ...settings }; this.revision++; this.scheduleSave(); }
   }
 
   setKeyBackgroundColor(keyIndex: number, color: string) {
-    this.ensureKey(keyIndex);
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.backgroundColor = color; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.ensureKey(keyIndex);
+    if (r) { r.key.backgroundColor = color; this.revision++; this.scheduleSave(); }
   }
 
   setKeyImage(keyIndex: number, dataUrl: string, filePath?: string) {
-    this.ensureKey(keyIndex);
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.imageDataUrl = dataUrl; a.imagePath = filePath; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    r.key.imageDataUrl = dataUrl;
+    r.key.imagePath = filePath;
+    this.revision++;
+    this.scheduleSave();
   }
 
   removeKeyImage(keyIndex: number) {
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.imageDataUrl = undefined; a.imagePath = undefined; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.keyRef(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    r.key.imageDataUrl = undefined;
+    r.key.imagePath = undefined;
+    this.revision++;
+    this.scheduleSave();
+  }
+
+  /** Remote image URL (templates allowed) and fit mode. */
+  setKeyImageUrl(keyIndex: number, url: string, fit?: KeyAssignment["imageFit"]) {
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    r.key.imageUrl = url || undefined;
+    if (fit !== undefined) r.key.imageFit = fit;
+    this.revision++;
+    this.scheduleSave();
+  }
+
+  setKeyImageFit(keyIndex: number, fit: KeyAssignment["imageFit"]) {
+    const r = this.keyRef(keyIndex);
+    if (r) { r.key.imageFit = fit; this.revision++; this.scheduleSave(); }
   }
 
   setKeyText(keyIndex: number, textConfig: TextConfig, textIndex: number = 0) {
-    this.ensureKey(keyIndex);
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a) return;
-    if (!a.texts) a.texts = [];
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    const a = r.key;
+    if (!a.texts) a.texts = a.text ? [cloneJson(a.text)] : [];
     while (a.texts.length <= textIndex) a.texts.push(this.defaultTextConfig());
-    a.texts[textIndex] = textConfig;
-    a.text = a.texts[0];
+    a.texts[textIndex] = cloneJson(textConfig);
+    a.text = cloneJson(a.texts[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   addKeyText(keyIndex: number) {
-    this.ensureKey(keyIndex);
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a) return;
-    if (!a.texts) a.texts = a.text ? [a.text] : [];
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    const a = r.key;
+    if (!a.texts) a.texts = a.text ? [cloneJson(a.text)] : [];
     a.texts.push(this.defaultTextConfig());
-    a.text = a.texts[0];
+    a.text = cloneJson(a.texts[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   removeKeyText(keyIndex: number, textIndex: number) {
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a?.texts || a.texts.length <= 1) return;
+    const r = this.keyRef(keyIndex);
+    const a = r?.key;
+    if (!r || !a?.texts || a.texts.length <= 1) return;
+    this.saveUndoState(r.scene);
     a.texts.splice(textIndex, 1);
-    a.text = a.texts[0];
+    a.text = cloneJson(a.texts[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   getKeyTexts(keyIndex: number): TextConfig[] {
@@ -727,23 +956,31 @@ class AppStore {
     return a.texts?.length ? a.texts : (a.text ? [a.text] : []);
   }
 
+  private emptyIcon(): IconConfig {
+    return { setId: "", iconName: "", svgBody: "", color: "#ffffff", size: 48, viewBox: "0 0 24 24" };
+  }
+
   setKeyIcon(keyIndex: number, iconConfig: IconConfig, iconIndex: number = 0) {
-    this.ensureKey(keyIndex);
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a) return;
-    if (!a.icons) a.icons = [];
-    while (a.icons.length <= iconIndex) a.icons.push({ setId: '', iconName: '', svgBody: '', color: '#ffffff', size: 48, viewBox: '0 0 24 24' });
-    a.icons[iconIndex] = iconConfig;
-    a.icon = a.icons[0];
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    const a = r.key;
+    if (!a.icons) a.icons = a.icon ? [cloneJson(a.icon)] : [];
+    while (a.icons.length <= iconIndex) a.icons.push(this.emptyIcon());
+    a.icons[iconIndex] = cloneJson(iconConfig);
+    a.icon = cloneJson(a.icons[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   removeKeyIcon(keyIndex: number) {
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.icon = undefined; a.icons = undefined; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.keyRef(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    r.key.icon = undefined;
+    r.key.icons = undefined;
+    this.revision++;
+    this.scheduleSave();
   }
 
   getKeyIcons(keyIndex: number): IconConfig[] {
@@ -753,51 +990,62 @@ class AppStore {
   }
 
   addKeyIcon(keyIndex: number) {
-    this.ensureKey(keyIndex);
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a) return;
-    if (!a.icons) a.icons = a.icon ? [a.icon] : [];
-    const base = a.icons[0] || { setId: '', iconName: '', svgBody: '', color: '#ffffff', size: 48, viewBox: '0 0 24 24' };
-    a.icons.push({ ...base, variable: '', value: '' });
-    a.icon = a.icons[0];
+    const r = this.ensureKey(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    const a = r.key;
+    if (!a.icons) a.icons = a.icon ? [cloneJson(a.icon)] : [];
+    const base = a.icons[0] ? cloneJson(a.icons[0]) : this.emptyIcon();
+    a.icons.push({ ...base, variable: "", value: "" });
+    a.icon = cloneJson(a.icons[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   removeKeyIconAt(keyIndex: number, iconIndex: number) {
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (!a?.icons || a.icons.length <= 1) {
+    const r = this.keyRef(keyIndex);
+    if (!r) return;
+    const a = r.key;
+    if (!a.icons || a.icons.length <= 1) {
       this.removeKeyIcon(keyIndex);
       return;
     }
+    this.saveUndoState(r.scene);
     a.icons.splice(iconIndex, 1);
-    a.icon = a.icons[0];
+    a.icon = cloneJson(a.icons[0]);
     this.revision++;
-    this.saveAndSync(keyIndex);
+    this.scheduleSave();
   }
 
   togglePinned(keyIndex: number) {
-    const scene = this.activeScene;
-    if (!scene) return;
-    const a = scene.keys[String(keyIndex)];
-    if (a) { a.pinned = !a.pinned; this.revision++; this.scheduleSave(); }
+    const r = this.keyRef(keyIndex);
+    if (!r) return;
+    this.saveUndoState(r.scene);
+    r.key.pinned = !r.key.pinned;
+    this.revision++;
+    this.scheduleSave();
   }
 
   isPinned(keyIndex: number): boolean { return this.getKeyAssignment(keyIndex)?.pinned ?? false; }
 
+  /** Clear the key at `index` (for a pinned key shown from another scene, that pinned key is removed). */
   clearKey(keyIndex: number) {
-    const scene = this.activeScene;
-    if (scene) { this.saveUndoState(); delete scene.keys[String(keyIndex)]; this.revision++; this.saveAndSync(keyIndex); }
+    const r = this.keyRef(keyIndex);
+    const serial = this.boundSerial;
+    if (!r || !serial) return;
+    this.saveUndoState(r.scene);
+    delete r.scene.keys[String(keyIndex)];
+    const ctx = makeContext(serial, r.scene.id, "Keypad", keyIndex);
+    this.stopTimer(ctx);
+    this.clearRuntimeOverride(ctx);
+    this.revision++;
+    this.scheduleSave();
   }
 
   // ═══ Encoder Methods ═══════════════════════════════════════
 
   defaultEncoderConfig(): EncoderConfig {
-    return { pressAction: NONE_ACTION, pressSettings: {}, rotateAction: NONE_ACTION, rotateSettings: {},
+    return { pressAction: { ...NONE_ACTION }, pressSettings: {}, rotateAction: { ...NONE_ACTION }, rotateSettings: {},
       label: "", value: "50", min: "0", max: "100", step: 1 };
   }
 
@@ -806,34 +1054,25 @@ class AppStore {
     return this.activeScene?.encoders?.[String(index)];
   }
 
+  getEncoderConfigForDevice(serial: string, index: number): EncoderConfig | undefined {
+    return this.getActiveScene(serial)?.encoders?.[String(index)];
+  }
+
   setEncoderConfig(index: number, config: EncoderConfig) {
     const scene = this.activeScene;
     if (!scene) return;
     if (!scene.encoders) scene.encoders = {};
-    scene.encoders[String(index)] = config;
+    scene.encoders[String(index)] = cloneJson(config);
     this.revision++;
     this.scheduleSave();
   }
 
-  /** Resolve any field — returns number if parseable, uses resolveTemplate for {{$var}} */
-  resolveNumber(input: string | number | undefined, fallback: number): number {
-    if (input === undefined || input === null || input === "") return fallback;
-    if (typeof input === "number") return input;
-    const resolved = this.resolveTemplate(input);
-    if (resolved === input && input.includes("{{")) return fallback; // variable not set yet
-    const parsed = parseFloat(resolved);
-    return isNaN(parsed) ? fallback : parsed;
-  }
-
-  /** Extract variable name from template: {{$name}} → name */
-  private extractVarName(template: string): string | null {
-    const m = template.match(/^\{\{\$?([^}|]+)/);
-    return m ? m[1].trim() : null;
-  }
-
-  /** Read all resolved encoder values at once */
+  /** Resolved value/min/max of an encoder of the edited device. */
   getEncoderResolved(index: number): { value: number; min: number; max: number } {
-    const cfg = this.getEncoderConfig(index);
+    return this.encoderResolved(this.getEncoderConfig(index));
+  }
+
+  private encoderResolved(cfg: EncoderConfig | undefined): { value: number; min: number; max: number } {
     if (!cfg) return { value: 0, min: 0, max: 100 };
     return {
       value: this.resolveNumber(cfg.value, 0),
@@ -842,81 +1081,164 @@ class AppStore {
     };
   }
 
-  private encoderActionTimers: Record<string, number> = {};
+  /**
+   * Rotate an encoder on any device. The value updates immediately (bound variable or the literal
+   * value, which is persisted); the rotate action runs debounced with the accumulated delta.
+   */
+  handleEncoderRotateForDevice(serial: string, index: number, delta: number) {
+    const scene = this.getActiveScene(serial);
+    const cfg = scene?.encoders?.[String(index)];
+    if (!scene || !cfg) return;
+    const { value: cur, min, max } = this.encoderResolved(cfg);
+    const step = Number(cfg.step) || 1;
+    const newVal = Math.max(min, Math.min(max, cur + delta * step));
 
-  handleEncoderRotate(index: number, delta: number) {
-    const scene = this.activeScene;
-    if (!scene) return;
-    if (!scene.encoders) scene.encoders = {};
-    const cfg = scene.encoders[String(index)] || this.defaultEncoderConfig();
-    const { value: cur, min, max } = this.getEncoderResolved(index);
-    const newVal = Math.max(min, Math.min(max, cur + delta * cfg.step));
-
-    // Update value immediately (UI stays responsive)
-    const varName = this.extractVarName(cfg.value);
+    const varName = tpl.extractVarName(cfg.value);
     if (varName) {
       this.setVariable(varName, String(newVal));
-    } else {
+    } else if (cfg.value !== String(newVal)) {
       cfg.value = String(newVal);
+      this.revision++;
+      this.scheduleSave();
     }
-    scene.encoders[String(index)] = { ...cfg };
-    this.revision++;
 
-    // Debounce the action execution — accumulates rapid rotations into one request
-    if (cfg.rotateAction.id !== "none") {
-      const k = String(index);
-      clearTimeout(this.encoderActionTimers[k]);
-      this.encoderActionTimers[k] = window.setTimeout(() => {
-        const latest = this.getEncoderResolved(index);
-        const resolved = this.resolveSettings(cfg.rotateSettings);
-        resolved.value = String(latest.value);
-        resolved.delta = String(delta);
-        resolved.min = String(latest.min);
-        resolved.max = String(latest.max);
-        this.executeAction(cfg.rotateAction.id, resolved);
-      }, 30);
-    }
+    if (cfg.rotateAction.id === "none") return;
+    const k = `${serial}:${scene.id}:${index}`;
+    this.encoderDeltaAcc[k] = (this.encoderDeltaAcc[k] ?? 0) + delta;
+    clearTimeout(this.encoderActionTimers[k]);
+    this.encoderActionTimers[k] = window.setTimeout(() => {
+      delete this.encoderActionTimers[k];
+      const acc = this.encoderDeltaAcc[k] ?? delta;
+      delete this.encoderDeltaAcc[k];
+      const latest = this.encoderResolved(cfg);
+      this.runAction(cfg.rotateAction.id, {
+        ...cfg.rotateSettings,
+        value: String(latest.value), delta: String(acc), min: String(latest.min), max: String(latest.max),
+      }, { serial, sceneId: scene.id });
+    }, 30);
+  }
+
+  handleEncoderPressForDevice(serial: string, index: number) {
+    const scene = this.getActiveScene(serial);
+    const cfg = scene?.encoders?.[String(index)];
+    if (!scene || !cfg || cfg.pressAction.id === "none") return;
+    const { value, min, max } = this.encoderResolved(cfg);
+    this.runAction(cfg.pressAction.id, {
+      ...cfg.pressSettings, value: String(value), min: String(min), max: String(max),
+    }, { serial, sceneId: scene.id });
+  }
+
+  /** Edited/selected device variants (kept for existing callers). */
+  handleEncoderRotate(index: number, delta: number) {
+    const serial = this.currentSerial ?? this.boundSerial;
+    if (serial) this.handleEncoderRotateForDevice(serial, index, delta);
   }
 
   handleEncoderPress(index: number) {
-    const cfg = this.getEncoderConfig(index);
-    if (!cfg || cfg.pressAction.id === "none") return;
-    const { value, min, max } = this.getEncoderResolved(index);
-    const resolved = this.resolveSettings(cfg.pressSettings);
-    resolved.value = String(value);
-    resolved.min = String(min);
-    resolved.max = String(max);
-    this.executeAction(cfg.pressAction.id, resolved);
+    const serial = this.currentSerial ?? this.boundSerial;
+    if (serial) this.handleEncoderPressForDevice(serial, index);
   }
 
-  /** Unified action execution: tries plugin executor first, falls back to Rust backend. */
-  private async executeAction(actionId: string, settings: Record<string, string>) {
-    try {
-      const handled = await executePluginAction(actionId, settings);
-      if (!handled) {
-        invoke("execute_action", { actionType: actionId, settings: JSON.stringify(settings) }).catch(() => {});
-      }
-    } catch (e) {
-      // Silently ignore connection errors — don't spam console
+  // ═══ Action dispatch ═══════════════════════════════════════
+
+  /**
+   * Resolve templates per setting value (never inside JSON documents such as multi-action steps).
+   * For shell actions, substituted variable values are POSIX single-quoted.
+   */
+  resolveActionSettings(actionId: string, settings: Record<string, string>): Record<string, string> {
+    const raw = RAW_SETTINGS[actionId] ?? [];
+    const shell = SHELL_SETTINGS[actionId] ?? [];
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(settings ?? {})) {
+      if (typeof v !== "string") { out[k] = v == null ? "" : String(v); continue; }
+      if (raw.includes(k)) out[k] = v;
+      else if (shell.includes(k)) out[k] = tpl.resolveTemplate(v, this.lookupVar, { transform: tpl.shellQuote });
+      else out[k] = tpl.resolveTemplate(v, this.lookupVar);
     }
+    return out;
+  }
+
+  /**
+   * The single action dispatcher for keys, encoders, strip gestures and multi-action steps.
+   * Navigation, timer and counter act on ctx.serial's device; everything else goes to the
+   * registered plugin executor. Failures (including unknown actions) are logged, stored in
+   * lastError and rethrown.
+   */
+  async executeAction(actionId: string, settings: Record<string, string>, ctx?: ActionContext): Promise<void> {
+    if (!actionId || actionId === "none") return;
+    try {
+      const resolved = this.resolveActionSettings(actionId, settings);
+      const serial = ctx?.serial ?? this.currentSerial ?? this.boundSerial ?? undefined;
+      switch (actionId) {
+        case "switch-scene": {
+          const t = this.navTarget(serial);
+          if (!t) throw new Error("No device to switch scenes on");
+          if (!resolved.sceneId) throw new Error("No target scene configured");
+          if (!t.config.scenes[resolved.sceneId]) throw new Error(`Scene ${resolved.sceneId} does not exist on ${t.serial}`);
+          if (resolved.mode === "switch") this.switchScene(resolved.sceneId, false, t.serial);
+          else this.pushScene(resolved.sceneId, t.serial);
+          return;
+        }
+        case "back":
+          this.popScene(serial);
+          return;
+        case "timer":
+        case "counter": {
+          const t = this.navTarget(serial);
+          if (!t || ctx?.keyIndex === undefined) throw new Error(`${actionId} needs a key to display on`);
+          const sceneId = ctx.sceneId ?? t.config.activeSceneId;
+          if (!sceneId) throw new Error("No active scene");
+          if (actionId === "timer") this.handleTimerPress(t.serial, sceneId, ctx.keyIndex, resolved);
+          else this.handleCounterPress(t.serial, sceneId, ctx.keyIndex);
+          return;
+        }
+      }
+      const executor = pluginExecutors[actionId];
+      if (!executor) {
+        const known = pluginActions.some(a => a.id === actionId);
+        throw new Error(known ? `Action "${actionId}" has no executor` : `Unknown action "${actionId}" (is its plugin enabled?)`);
+      }
+      await executor(resolved, ctx);
+    } catch (e) {
+      const msg = errorMessage(e);
+      console.error(`[Action] ${actionId} failed:`, e);
+      this.lastError = `${actionId}: ${msg}`;
+      throw e;
+    }
+  }
+
+  /** Fire-and-forget dispatch for internal callers (errors are already surfaced by executeAction). */
+  private runAction(actionId: string, settings: Record<string, string>, ctx?: ActionContext) {
+    this.executeAction(actionId, settings, ctx).catch(() => {});
+  }
+
+  /** Run the action of the key at `keyIndex` on any device's active scene (physical press). */
+  async executeKeyAction(serial: string, keyIndex: number): Promise<void> {
+    const sceneId = this.profileDevices[serial]?.activeSceneId;
+    if (!sceneId) return;
+    const key = this.getEffectiveKey(serial, sceneId, keyIndex);
+    if (!key) return;
+    await this.executeAction(key.action.id, key.settings, { serial, sceneId, keyIndex });
   }
 
   // ═══ Touch Strip ════════════════════════════════════════════
 
-  selectedStripItemId = $state<string | null>(null);
-
+  /** Strip of the edited device's active scene. */
   getStripConfig(): StripConfig {
     void this.revision;
-    return this.activeScene?.strip || { backgroundColor: "#0a0a1a", items: [] };
+    return this.activeScene?.strip || DEFAULT_STRIP;
+  }
+
+  getStripConfigForDevice(serial: string): StripConfig {
+    return this.getActiveScene(serial)?.strip || DEFAULT_STRIP;
   }
 
   updateStrip(config: StripConfig) {
     const scene = this.activeScene;
     if (!scene) return;
-    scene.strip = config;
+    scene.strip = cloneJson(config);
     this.revision++;
     this.scheduleSave();
-    this.syncStrip();
   }
 
   addStripItem(item: StripItem) {
@@ -942,304 +1264,273 @@ class AppStore {
     if (this.selectedStripItemId) { this.selectedKeyIndex = null; this.selectedEncoderIndex = null; }
   }
 
-  private hitTestStrip(x: number, y: number): StripItem | null {
-    const cfg = this.getStripConfig();
-    for (let i = cfg.items.length - 1; i >= 0; i--) {
-      const it = cfg.items[i];
+  private hitTestStrip(serial: string, x: number, y: number): StripItem | null {
+    const items = this.getStripConfigForDevice(serial).items;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
       if (x >= it.x && x <= it.x + it.w && y >= it.y && y <= it.y + it.h) return it;
     }
     return null;
   }
 
-  handleStripTap(x: number, y: number) {
-    const item = this.hitTestStrip(x, y);
-    if (item?.tapAction && item.tapAction.id !== "none" && item.tapSettings) {
-      const resolved = this.resolveSettings(item.tapSettings);
-      resolved.tap_x = String(x);
-      resolved.tap_y = String(y);
-      // Swipe-bar: map x position within item to 0-1 ratio
-      resolved.ratio = String(Math.max(0, Math.min(1, (x - item.x) / item.w)));
-      this.executeAction(item.tapAction.id, resolved);
-    }
-  }
-
-  handleStripLongPress(x: number, y: number) {
-    const item = this.hitTestStrip(x, y);
-    if (item?.longPressAction && item.longPressAction.id !== "none" && item.longPressSettings) {
-      const resolved = this.resolveSettings(item.longPressSettings);
-      this.executeAction(item.longPressAction.id, resolved);
-    }
-  }
-
-  /** Hit-test for swipe — checks if either start or end of swipe intersects any item */
-  private hitTestSwipe(fromX: number, fromY: number, toX: number, toY: number): StripItem | null {
-    const cfg = this.getStripConfig();
-    const minX = Math.min(fromX, toX);
-    const maxX = Math.max(fromX, toX);
-    for (let i = cfg.items.length - 1; i >= 0; i--) {
-      const it = cfg.items[i];
-      // Swipe intersects item if the swipe range overlaps the item's x range
+  /** Swipe intersects an item if the swipe's x range overlaps the item's x range. */
+  private hitTestSwipe(serial: string, fromX: number, toX: number): StripItem | null {
+    const items = this.getStripConfigForDevice(serial).items;
+    const minX = Math.min(fromX, toX), maxX = Math.max(fromX, toX);
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
       if (maxX >= it.x && minX <= it.x + it.w) return it;
     }
     return null;
   }
 
+  private stripCtx(serial: string): ActionContext {
+    return { serial, sceneId: this.profileDevices[serial]?.activeSceneId ?? undefined };
+  }
+
+  handleStripTapForDevice(serial: string, x: number, y: number) {
+    const item = this.hitTestStrip(serial, x, y);
+    if (!item?.tapAction || item.tapAction.id === "none") return;
+    this.runAction(item.tapAction.id, {
+      ...(item.tapSettings ?? {}),
+      tap_x: String(x), tap_y: String(y),
+      // Swipe-bar: x position within the item as a 0-1 ratio
+      ratio: String(Math.max(0, Math.min(1, (x - item.x) / (item.w || 1)))),
+    }, this.stripCtx(serial));
+  }
+
+  handleStripLongPressForDevice(serial: string, x: number, y: number) {
+    const item = this.hitTestStrip(serial, x, y);
+    if (!item?.longPressAction || item.longPressAction.id === "none") return;
+    this.runAction(item.longPressAction.id, { ...(item.longPressSettings ?? {}) }, this.stripCtx(serial));
+  }
+
+  handleStripSwipeForDevice(serial: string, fromX: number, _fromY: number, toX: number, _toY: number) {
+    const item = this.hitTestSwipe(serial, fromX, toX);
+    if (!item?.swipeAction || item.swipeAction.id === "none") return;
+    const w = item.w || 1;
+    this.runAction(item.swipeAction.id, {
+      ...(item.swipeSettings ?? {}),
+      from_x: String(fromX), to_x: String(toX),
+      from_ratio: String(Math.max(0, Math.min(1, (fromX - item.x) / w))),
+      to_ratio: String(Math.max(0, Math.min(1, (toX - item.x) / w))),
+      direction: toX > fromX ? "right" : "left",
+      distance: String(Math.abs(toX - fromX)),
+    }, this.stripCtx(serial));
+  }
+
+  /** Selected-device variants (kept for existing callers). */
+  handleStripTap(x: number, y: number) {
+    const s = this.currentSerial; if (s) this.handleStripTapForDevice(s, x, y);
+  }
+  handleStripLongPress(x: number, y: number) {
+    const s = this.currentSerial; if (s) this.handleStripLongPressForDevice(s, x, y);
+  }
   handleStripSwipe(fromX: number, fromY: number, toX: number, toY: number) {
-    const item = this.hitTestSwipe(fromX, fromY, toX, toY);
-    if (item?.swipeAction && item.swipeAction.id !== "none" && item.swipeSettings) {
-      // Calculate ratio based on the END position relative to the item
-      const toRatio = Math.max(0, Math.min(1, (toX - item.x) / item.w));
-      const resolved = this.resolveSettings(item.swipeSettings);
-      resolved.from_x = String(fromX);
-      resolved.to_x = String(toX);
-      resolved.from_ratio = String(Math.max(0, Math.min(1, (fromX - item.x) / item.w)));
-      resolved.to_ratio = String(Math.max(0, Math.min(1, (toX - item.x) / item.w)));
-      resolved.direction = toX > fromX ? "right" : "left";
-      resolved.distance = String(Math.abs(toX - fromX));
-      this.executeAction(item.swipeAction.id, resolved);
-    }
+    const s = this.currentSerial; if (s) this.handleStripSwipeForDevice(s, fromX, fromY, toX, toY);
   }
 
-  /** Render the full 800x100 strip and push to device */
-  private stripSyncTimer: number | undefined;
-  syncStrip() {
-    if (!this.selectedDevice?.has_lcd_strip) return;
-    clearTimeout(this.stripSyncTimer);
-    this.stripSyncTimer = window.setTimeout(async () => {
-      const cfg = this.getStripConfig();
-      const canvas = document.createElement("canvas");
-      canvas.width = 800; canvas.height = 100;
-      const ctx = canvas.getContext("2d")!;
+  // ═══ Contexts, runtime overrides, plugin settings ══════════
 
-      // Background
-      const bg = this.resolveTemplate(cfg.backgroundColor || "#0a0a1a");
-      ctx.fillStyle = (bg.startsWith("#") || bg.startsWith("rgb")) ? bg : "#0a0a1a";
-      ctx.fillRect(0, 0, 800, 100);
-
-      // Render items in order
-      for (const item of cfg.items) {
-        await this.renderStripItemAsync(ctx, item);
-      }
-
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.90);
-      const serial = this.currentSerial;
-      if (serial) {
-        invoke("send_lcd_image", { serial, x: 0, y: 0, w: 800, h: 100, imageData: dataUrl }).catch(() => {});
-      }
-    }, 100);
+  makeContext(serial: string, sceneId: string, controller: ControllerKind, index: number): string {
+    return makeContext(serial, sceneId, controller, index);
   }
 
-  private async renderStripItemAsync(ctx: CanvasRenderingContext2D, item: StripItem) {
-    const { x, y, w, h } = item;
-
-    // Clip to item bounds
-    ctx.save();
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.clip();
-
-    // Background
-    if (item.backgroundColor) {
-      const bg = this.resolveTemplate(item.backgroundColor);
-      ctx.fillStyle = (bg.startsWith("#") || bg.startsWith("rgb")) ? bg : "#333";
-      ctx.fillRect(x, y, w, h);
-    }
-
-    // Bar indicator
-    if (item.bar) {
-      const val = this.resolveNumber(item.bar.value, 0);
-      const min = this.resolveNumber(item.bar.min, 0);
-      const max = this.resolveNumber(item.bar.max, 100);
-      const ratio = max > min ? Math.max(0, Math.min(1, (val - min) / (max - min))) : 0;
-      const barColor = this.resolveTemplate(item.bar.color || "#03a9f4");
-      ctx.fillStyle = (barColor.startsWith("#") || barColor.startsWith("rgb")) ? barColor : "#03a9f4";
-      if (item.bar.position === "full") {
-        ctx.fillRect(x, y, w * ratio, h);
-      } else if (item.bar.position === "left") {
-        const bw = item.bar.height || 8;
-        ctx.fillStyle = "rgba(255,255,255,0.1)";
-        ctx.fillRect(x, y, bw, h);
-        ctx.fillStyle = (barColor.startsWith("#") || barColor.startsWith("rgb")) ? barColor : "#03a9f4";
-        ctx.fillRect(x, y + h * (1 - ratio), bw, h * ratio);
-      } else {
-        // bottom (default)
-        const bh = item.bar.height || 8;
-        const barFill = (barColor.startsWith("#") || barColor.startsWith("rgb")) ? barColor : "#03a9f4";
-        // track background
-        ctx.fillStyle = "rgba(255,255,255,0.1)";
-        ctx.beginPath(); ctx.roundRect(x + 4, y + h - bh - 4, w - 8, bh, 3); ctx.fill();
-        // fill proportional
-        ctx.fillStyle = barFill;
-        ctx.beginPath(); ctx.roundRect(x + 4, y + h - bh - 4, (w - 8) * ratio, bh, 3); ctx.fill();
-      }
-    }
-
-    // Image (data URL or remote URL with variable support)
-    const resolvedImgUrl = item.imageUrl ? this.resolveTemplate(item.imageUrl) : "";
-    const imgSrc = item.imageDataUrl || (resolvedImgUrl && !resolvedImgUrl.includes("{{") ? resolvedImgUrl : "");
-    if (imgSrc) {
-      try {
-        const img = await this.loadImg(imgSrc);
-        const fit = item.imageFit || "fill";
-        if (fit === "fill") {
-          ctx.drawImage(img, x, y, w, h);
-        } else if (fit === "cover") {
-          const scale = Math.max(w / img.width, h / img.height);
-          const sw = w / scale, sh = h / scale;
-          const sx = (img.width - sw) / 2, sy = (img.height - sh) / 2;
-          ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-        } else if (fit === "contain") {
-          const scale = Math.min(w / img.width, h / img.height);
-          const dw = img.width * scale, dh = img.height * scale;
-          ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-        } else {
-          ctx.drawImage(img, x + (w - img.width) / 2, y + (h - img.height) / 2);
-        }
-      } catch {}
-    }
-
-    // Icon
-    if (item.icon) {
-      const iconSize = Math.min(item.icon.size || 48, h - 4);
-      const color = item.icon.color || "#fff";
-      const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${item.icon.viewBox}" width="${iconSize}" height="${iconSize}"><style>*{fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}</style>${item.icon.svgBody}</svg>`;
-      try {
-        const svgB64 = btoa(unescape(encodeURIComponent(svgStr)));
-        const img = await this.loadImg(`data:image/svg+xml;base64,${svgB64}`);
-        ctx.drawImage(img, x + (w - iconSize) / 2, y + (h - iconSize) / 2, iconSize, iconSize);
-      } catch {}
-    }
-
-    // Text layers
-    if (item.texts) {
-      for (const t of item.texts) {
-        if (!t?.text || t.hidden) continue;
-        const text = this.resolveTemplate(t.text);
-        const color = this.resolveTemplate(t.color || "#fff");
-        ctx.fillStyle = (color.startsWith("#") || color.startsWith("rgb")) ? color : "#fff";
-        const weight = t.fontWeight === "bold" ? "bold " : "";
-        const style = t.fontStyle === "italic" ? "italic " : "";
-        ctx.font = `${style}${weight}${t.fontSize || 14}px ${t.fontFamily || "sans-serif"}`;
-
-        // Position text relative to item bounds
-        let tx: number, ty: number;
-        if (t.useAbsolutePos) { tx = x + (t.x || 0); ty = y + (t.y || 0); }
-        else {
-          tx = t.hAlign === "left" ? x + 4 : t.hAlign === "right" ? x + w - 4 : x + w / 2;
-          ty = t.vAlign === "top" ? y + t.fontSize : t.vAlign === "bottom" ? y + h - 4 : y + h / 2;
-        }
-        ctx.textAlign = t.hAlign === "left" ? "left" : t.hAlign === "right" ? "right" : "center";
-        ctx.textBaseline = t.vAlign === "top" ? "top" : t.vAlign === "bottom" ? "bottom" : "middle";
-        if (t.shadow) {
-          ctx.shadowColor = t.shadow.color; ctx.shadowBlur = t.shadow.blur;
-          ctx.shadowOffsetX = t.shadow.offsetX; ctx.shadowOffsetY = t.shadow.offsetY;
-        }
-        if (t.stroke && t.stroke.width > 0) {
-          ctx.strokeStyle = t.stroke.color; ctx.lineWidth = t.stroke.width;
-          ctx.lineJoin = "round"; ctx.strokeText(text, tx, ty, w - 8);
-        }
-        ctx.fillText(text, tx, ty, w - 8);
-        if (t.shadow) { ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; }
-      }
-    }
-    ctx.restore(); // end clip
+  parseContext(ctx: string): ParsedContext | null {
+    return parseContext(ctx);
   }
 
-  private imgUrlCache: Record<string, string> = {};
-  private async loadImg(src: string): Promise<HTMLImageElement> {
-    let url = src;
-    if (src.startsWith("http://") || src.startsWith("https://")) {
-      if (this.imgUrlCache[src]) {
-        url = this.imgUrlCache[src];
-      } else {
-        try {
-          const dataUrl = await invoke<string>("fetch_image_as_data_url", { url: src });
-          this.imgUrlCache[src] = dataUrl;
-          url = dataUrl;
-        } catch {}
-      }
+  /** Merge `patch` into a context's override; a field set to undefined is removed. */
+  setRuntimeOverride(ctx: string, patch: Partial<RuntimeOverride>) {
+    const next: RuntimeOverride = { ...(this.runtimeOverrides[ctx] ?? {}) };
+    for (const [k, v] of Object.entries(patch) as [keyof RuntimeOverride, unknown][]) {
+      if (v === undefined) delete next[k];
+      else (next as Record<string, unknown>)[k] = v;
     }
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = (e) => reject(e);
-      img.src = url;
-    });
+    if (Object.keys(next).length === 0) delete this.runtimeOverrides[ctx];
+    else this.runtimeOverrides[ctx] = next;
+  }
+
+  clearRuntimeOverride(ctx: string) {
+    if (ctx in this.runtimeOverrides) delete this.runtimeOverrides[ctx];
+  }
+
+  /**
+   * Override to render a key with: the context's runtime override, plus the counter value as the
+   * title for counter keys (so the count survives restarts without touching the label).
+   */
+  getKeyOverride(serial: string, sceneId: string, index: number, key?: KeyAssignment): RuntimeOverride | undefined {
+    const o = this.runtimeOverrides[makeContext(serial, sceneId, "Keypad", index)];
+    if (key?.action?.id === "counter" && o?.title === undefined) {
+      return { ...(o ?? {}), title: key.settings?.value || "0" };
+    }
+    return o;
+  }
+
+  /** getKeyOverride for the edited device's active scene (editor preview). */
+  getEditorKeyOverride(index: number): RuntimeOverride | undefined {
+    const serial = this.boundSerial, sceneId = this.activeSceneId;
+    if (!serial || !sceneId) return undefined;
+    return this.getKeyOverride(serial, sceneId, index, this.getEffectiveKey(serial, sceneId, index));
+  }
+
+  private contextTarget(ctx: string): { kind: "key"; key: KeyAssignment } | { kind: "encoder"; enc: EncoderConfig } | null {
+    const p = parseContext(ctx);
+    if (!p) return null;
+    if (p.controller === "Keypad") {
+      const r = this.findKeyOwner(p.serial, p.sceneId, p.index);
+      return r ? { kind: "key", key: r.key } : null;
+    }
+    const enc = this.profileDevices[p.serial]?.scenes[p.sceneId]?.encoders?.[String(p.index)];
+    return enc ? { kind: "encoder", enc } : null;
+  }
+
+  /** Persist a plugin's settings object for a context (as JSON in settings.pluginSettings). */
+  setPluginSettings(ctx: string, obj: Record<string, unknown>) {
+    const t = this.contextTarget(ctx);
+    if (!t) { console.warn(`setPluginSettings: no key/encoder at ${ctx}`); return; }
+    const json = JSON.stringify(obj ?? {});
+    if (t.kind === "key") {
+      if (t.key.settings.pluginSettings === json) return;
+      t.key.settings = { ...t.key.settings, pluginSettings: json };
+    } else {
+      // An Elgato encoder action handles both press and rotate: keep both slots in sync.
+      if (t.enc.rotateAction.id !== "none") t.enc.rotateSettings = { ...t.enc.rotateSettings, pluginSettings: json };
+      if (t.enc.pressAction.id !== "none") t.enc.pressSettings = { ...t.enc.pressSettings, pluginSettings: json };
+    }
+    this.revision++;
+    this.scheduleSave();
+  }
+
+  /** Parsed plugin settings of a context ({} when unset or invalid). */
+  getPluginSettings(ctx: string): Record<string, unknown> {
+    const t = this.contextTarget(ctx);
+    if (!t) return {};
+    const raw = t.kind === "key"
+      ? t.key.settings.pluginSettings
+      : (t.enc.rotateSettings.pluginSettings ?? t.enc.pressSettings.pluginSettings);
+    if (!raw) return {};
+    try {
+      const v = JSON.parse(raw);
+      return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    } catch { return {}; }
   }
 
   // ═══ Favorites / Recent ════════════════════════════════════
 
   getRecentActions(): ActionDef[] { return this.recentActions.map(id => ACTION_TYPES.all.find(a => a.id === id)).filter((a): a is ActionDef => !!a); }
   getFavoriteActions(): ActionDef[] { return this.favoriteActions.map(id => ACTION_TYPES.all.find(a => a.id === id)).filter((a): a is ActionDef => !!a); }
-  toggleFavorite(id: string) { this.favoriteActions = this.favoriteActions.includes(id) ? this.favoriteActions.filter(x => x !== id) : [...this.favoriteActions, id]; }
+  toggleFavorite(id: string) {
+    this.favoriteActions = this.favoriteActions.includes(id) ? this.favoriteActions.filter(x => x !== id) : [...this.favoriteActions, id];
+    this.scheduleSave();
+  }
   isFavorite(id: string): boolean { return this.favoriteActions.includes(id); }
   private trackRecent(id: string) { this.recentActions = [id, ...this.recentActions.filter(x => x !== id)].slice(0, 10); }
 
-  // ═══ Undo / Redo ═══════════════════════════════════════════
+  // ═══ Undo / Redo (per scene, across devices) ═══════════════
 
-  private saveUndoState() {
-    const scene = this.activeScene;
-    if (!scene) return;
-    this.undoStack = [...this.undoStack.slice(-(MAX_UNDO - 1)), { sceneId: scene.id, keys: JSON.parse(JSON.stringify(scene.keys)) }];
+  private saveUndoState(scene: Scene | undefined) {
+    const serial = this.boundSerial;
+    if (!scene || !serial) return;
+    this.undoStack = [...this.undoStack.slice(-(MAX_UNDO - 1)), { serial, sceneId: scene.id, keys: cloneJson(scene.keys) }];
     this.redoStack = [];
   }
 
+  /** Restore `entry` into its own scene; returns the snapshot it replaced (for the opposite stack). */
+  private restoreEntry(entry: UndoEntry): UndoEntry | null {
+    const config = this.profileDevices[entry.serial];
+    const scene = config?.scenes[entry.sceneId];
+    if (!config || !scene) return null;
+    const replaced: UndoEntry = { serial: entry.serial, sceneId: entry.sceneId, keys: cloneJson(scene.keys) };
+    scene.keys = cloneJson(entry.keys);
+    if (entry.serial === this.boundSerial && config.activeSceneId !== entry.sceneId) {
+      this.switchScene(entry.sceneId, false, entry.serial); // show what changed
+    }
+    this.revision++;
+    this.scheduleSave();
+    return replaced;
+  }
+
   undo() {
-    if (this.undoStack.length === 0) return;
-    const scene = this.activeScene;
-    if (!scene) return;
-    this.redoStack = [...this.redoStack, { sceneId: scene.id, keys: JSON.parse(JSON.stringify(scene.keys)) }];
-    const prev = this.undoStack[this.undoStack.length - 1];
-    this.undoStack = this.undoStack.slice(0, -1);
-    if (prev.sceneId === scene.id) { scene.keys = prev.keys; this.revision++; }
+    while (this.undoStack.length > 0) {
+      const entry = this.undoStack[this.undoStack.length - 1];
+      this.undoStack = this.undoStack.slice(0, -1);
+      const replaced = this.restoreEntry(entry);
+      if (replaced) { this.redoStack = [...this.redoStack, replaced]; return; }
+      // Entry for a deleted scene/device: skip it.
+    }
   }
 
   redo() {
-    if (this.redoStack.length === 0) return;
-    const scene = this.activeScene;
-    if (!scene) return;
-    this.undoStack = [...this.undoStack, { sceneId: scene.id, keys: JSON.parse(JSON.stringify(scene.keys)) }];
-    const next = this.redoStack[this.redoStack.length - 1];
-    this.redoStack = this.redoStack.slice(0, -1);
-    if (next.sceneId === scene.id) { scene.keys = next.keys; this.revision++; }
+    while (this.redoStack.length > 0) {
+      const entry = this.redoStack[this.redoStack.length - 1];
+      this.redoStack = this.redoStack.slice(0, -1);
+      const replaced = this.restoreEntry(entry);
+      if (replaced) { this.undoStack = [...this.undoStack, replaced]; return; }
+    }
   }
 
   canUndo(): boolean { return this.undoStack.length > 0; }
   canRedo(): boolean { return this.redoStack.length > 0; }
 
-  // ═══ Timer / Counter ═══════════════════════════════════════
+  // ═══ Timer / Counter (display via runtime overrides; label never mutated) ═══
 
-  handleTimerPress(keyIndex: number) {
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (!a) return;
-    const duration = parseInt(a.settings.duration || "60");
-    if (this.activeTimers[String(keyIndex)]) {
-      clearInterval(this.activeTimers[String(keyIndex)]);
-      delete this.activeTimers[String(keyIndex)];
-      a.text = { ...this.defaultTextConfig(), text: this.formatTime(duration), fontSize: 20, color: "#ffffff" };
-      this.revision++; return;
+  /** Start, or stop and reset, the countdown timer of a key. */
+  handleTimerPress(serial: string, sceneId: string, keyIndex: number, settings: Record<string, string>) {
+    const ctx = makeContext(serial, sceneId, "Keypad", keyIndex);
+    const parsed = parseInt(settings.duration || "60", 10);
+    const duration = Number.isFinite(parsed) && parsed > 0 ? parsed : 60;
+    if (this.timers[ctx] !== undefined) {
+      this.stopTimer(ctx);
+      this.setRuntimeOverride(ctx, { title: this.formatTime(duration) });
+      return;
     }
     let remaining = duration;
-    a.text = { ...this.defaultTextConfig(), text: this.formatTime(remaining), fontSize: 20, color: "#00ff00" };
-    this.revision++;
-    this.activeTimers[String(keyIndex)] = window.setInterval(() => {
+    this.setRuntimeOverride(ctx, { title: this.formatTime(remaining) });
+    this.timers[ctx] = window.setInterval(() => {
       remaining--;
-      const ka = this.activeScene?.keys[String(keyIndex)];
-      if (!ka || remaining <= 0) {
-        clearInterval(this.activeTimers[String(keyIndex)]); delete this.activeTimers[String(keyIndex)];
-        if (ka) { ka.text = { ...this.defaultTextConfig(), text: "DONE", fontSize: 16, color: "#ff0000" }; this.revision++; }
+      if (remaining <= 0) {
+        this.stopTimer(ctx);
+        this.setRuntimeOverride(ctx, { title: "DONE" });
         return;
       }
-      ka.text = { ...this.defaultTextConfig(), text: this.formatTime(remaining), fontSize: 20, color: remaining <= 10 ? "#ff4444" : "#00ff00" };
-      this.revision++;
+      this.setRuntimeOverride(ctx, { title: this.formatTime(remaining) });
     }, 1000);
   }
 
-  handleCounterPress(keyIndex: number) {
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (!a) return;
-    const val = parseInt(a.settings.value || "0") + 1;
-    a.settings.value = String(val);
-    a.text = { ...this.defaultTextConfig(), text: String(val), fontSize: 24, color: "#ffffff" };
+  /** Increment a counter key; the count is the key's `value` setting (persisted) and shown as its title. */
+  handleCounterPress(serial: string, sceneId: string, keyIndex: number) {
+    const r = this.findKeyOwner(serial, sceneId, keyIndex);
+    if (!r) return;
+    const cur = parseInt(r.key.settings.value || "0", 10);
+    const val = (Number.isFinite(cur) ? cur : 0) + 1;
+    r.key.settings = { ...r.key.settings, value: String(val) }; // shown as the title by getKeyOverride
     this.revision++;
+    this.scheduleSave();
+  }
+
+  private stopTimer(ctx: string) {
+    const id = this.timers[ctx];
+    if (id === undefined) return;
+    clearInterval(id);
+    delete this.timers[ctx];
+  }
+
+  /** Stop timers of a device matching `pred` and clear their displays. */
+  private stopTimers(serial: string, pred: (p: ParsedContext) => boolean) {
+    for (const ctx of Object.keys(this.timers)) {
+      const p = parseContext(ctx);
+      if (!p || p.serial !== serial || !pred(p)) continue;
+      this.stopTimer(ctx);
+      this.setRuntimeOverride(ctx, { title: undefined });
+    }
+  }
+
+  private stopAllTimers() {
+    for (const ctx of Object.keys(this.timers)) {
+      this.stopTimer(ctx);
+      this.setRuntimeOverride(ctx, { title: undefined });
+    }
   }
 
   // ═══ Helpers ═══════════════════════════════════════════════
@@ -1255,19 +1546,14 @@ class AppStore {
       color: "#ffffff", hAlign: "center", vAlign: "middle", anchor: "center", useAbsolutePos: false };
   }
 
+  /** Resolve every setting value's templates (no shell quoting; see resolveActionSettings). */
   resolveSettings(settings: Record<string, string>): Record<string, string> {
     const r: Record<string, string> = {};
     for (const [k, v] of Object.entries(settings)) r[k] = this.resolveTemplate(v);
     return r;
   }
 
-  private ensureKey(keyIndex: number) {
-    const scene = this.activeScene;
-    if (!scene || scene.keys[String(keyIndex)]) return;
-    scene.keys[String(keyIndex)] = { action: NONE_ACTION, settings: {}, backgroundColor: "#000000" };
-  }
-
-  private getDefaultSettings(actionId: string): Record<string, string> {
+  getDefaultSettings(actionId: string): Record<string, string> {
     switch (actionId) {
       case "hotkey": return { key: "", modifiers: "" };
       case "launch": return { target: "" };
@@ -1278,21 +1564,12 @@ class AppStore {
       case "back": return {};
       case "timer": return { duration: "60" };
       case "counter": return { value: "0" };
+      case "multi-action": return { steps: "[]" };
       default: return {};
     }
   }
 
   private formatTime(s: number): string { const m = Math.floor(s / 60); return m > 0 ? `${m}:${String(s % 60).padStart(2, "0")}` : `${s}`; }
-
-  // ═══ Device Sync ═══════════════════════════════════════════
-
-  /** Save profile after user-initiated mutations. Device sync is handled by KeySlot reactivity. */
-  private saveAndSync(_keyIndex: number) {
-    this.scheduleSave();
-  }
-
-  // Device key sync is handled by KeySlot component reactivity.
-  // Strip sync is triggered by revision changes in the strip canvas.
 }
 
 // ─── Singleton ───────────────────────────────────────────────

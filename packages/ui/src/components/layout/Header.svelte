@@ -44,7 +44,14 @@
 
   function handleAddScene() {
     const scene = createScene("New Scene");
-    switchScene(scene.id);
+    if (scene) switchScene(scene.id);
+  }
+
+  function handleDeleteScene() {
+    const id = activeSceneId;
+    if (!id) return;
+    const name = scenes.find(sc => sc.id === id)?.name ?? "this scene";
+    if (confirm(`Delete scene "${name}"?`)) deleteScene(id);
   }
 
   function autoFocus(node: HTMLInputElement) {
@@ -98,26 +105,28 @@
 {#if currentView === "editor"}
   <div class="scene-bar">
     <div class="scene-tabs">
-      {#each scenes as scene}
-        <button
-          class="scene-tab"
-          class:active={activeSceneId === scene.id}
-          onclick={() => switchScene(scene.id)}
-          ondblclick={() => startRename(scene.id, scene.name)}
-        >
-          {#if editingSceneId === scene.id}
-            <input
-              class="scene-rename"
-              type="text"
-              bind:value={editName}
-              onblur={finishRename}
-              onkeydown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') editingSceneId = null; }}
-              use:autoFocus
-            />
-          {:else}
+      {#each scenes as scene (scene.id)}
+        {#if editingSceneId === scene.id}
+          <input
+            class="scene-tab scene-rename"
+            type="text"
+            aria-label="Scene name"
+            bind:value={editName}
+            onblur={finishRename}
+            onkeydown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') editingSceneId = null; }}
+            use:autoFocus
+          />
+        {:else}
+          <button
+            class="scene-tab"
+            class:active={activeSceneId === scene.id}
+            onclick={() => switchScene(scene.id)}
+            ondblclick={() => startRename(scene.id, scene.name)}
+            title="Double-click to rename"
+          >
             {scene.name}
-          {/if}
-        </button>
+          </button>
+        {/if}
       {/each}
       <button class="scene-add" onclick={handleAddScene} title="New scene">+</button>
     </div>
@@ -125,7 +134,7 @@
       {showTriggers ? 'Hide' : 'Triggers'}
     </button>
     {#if activeSceneId && scenes.length > 1}
-      <button class="scene-delete" onclick={() => { if (activeSceneId) deleteScene(activeSceneId); }}>Delete</button>
+      <button class="scene-delete" onclick={handleDeleteScene}>Delete</button>
     {/if}
   </div>
   <TriggerEditor bind:open={showTriggers} />

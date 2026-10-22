@@ -44,7 +44,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libudev-dev libhidapi-dev
 
       - name: Install frontend dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version '^2' --locked
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -57,29 +60,3 @@ jobs:
           releaseDraft: true
           prerelease: false
           tauriScript: cargo tauri
-
-  ci:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Install system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libssl-dev libgtk-3-dev libayatana-appindicator3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libudev-dev libhidapi-dev
-
-      - name: Install deps
-        run: pnpm install
-
-      - name: Check Rust
-        run: cargo check --workspace
-
-      - name: Build frontend
-        run: pnpm --filter @open-stream-deck/ui build

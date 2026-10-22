@@ -1,10 +1,12 @@
 <script lang="ts">
   import type { TextConfig } from "../../lib/stores/editor.svelte";
+  import { untrack } from "svelte";
   import VarInput from "../input/VarInput.svelte";
 
   let { config, onChange }: { config: TextConfig; onChange: (c: TextConfig) => void } = $props();
 
-  let showEffects = $state(!!config.stroke || !!config.shadow);
+  // Open the Effects section initially when the layer already uses an effect.
+  let showEffects = $state(untrack(() => !!config.stroke || !!config.shadow));
   let showLayout = $state(false);
 
   function update(partial: Partial<TextConfig>) {
@@ -258,5 +260,5 @@
   }
   .tc-toggle input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; }
 
-  .tc input[type="number"] { -moz-appearance: textfield; }
+  .tc input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 </style>

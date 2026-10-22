@@ -1,5 +1,12 @@
 # Plugin Management System — Design Spec
 
+> **Historical design spec (April 2026), kept for reference; the code is the source of truth.**
+>
+> **Implemented, deviations (2026-10):** the Tauri commands are `discover_external_plugins`,
+> `start_external_plugin`, `stop_external_plugin`, `get_plugin_status` and `plugin_send_event` (not
+> `list_plugins` / `start_plugin` / `stop_plugin`). External plugin settings use `config.schema.json` +
+> `PluginConfig.svelte`; there is no PropertyInspector. See ARCHITECTURE.md "Plugin Architecture".
+
 ## Problem
 
 Plugins (like Home Assistant) register actions but don't appear in the Plugins page. Users can't enable/disable them or manage their settings. HA settings are hardcoded in Settings.svelte regardless of whether the plugin is active.

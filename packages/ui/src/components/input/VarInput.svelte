@@ -7,13 +7,39 @@
     onchange,
     multiline = false,
     rows = 1,
+    id,
+    debounceMs = 0,
   }: {
     value: string;
     placeholder?: string;
     onchange: (value: string) => void;
     multiline?: boolean;
     rows?: number;
+    /** id for the input element, so a <label for> can point at it. */
+    id?: string;
+    /** Delay onchange while typing (flushed on blur), e.g. for URLs that trigger fetches. */
+    debounceMs?: number;
   } = $props();
+
+  let pendingTimer: number | undefined;
+  let pendingValue: string | null = null;
+
+  function emit(val: string) {
+    if (debounceMs <= 0) { onchange(val); return; }
+    pendingValue = val;
+    clearTimeout(pendingTimer);
+    pendingTimer = window.setTimeout(flush, debounceMs);
+  }
+
+  function flush() {
+    clearTimeout(pendingTimer);
+    if (pendingValue === null) return;
+    const val = pendingValue;
+    pendingValue = null;
+    onchange(val);
+  }
+
+  $effect(() => () => flush());
 
   let showSuggestions = $state(false);
   let query = $state("");
@@ -34,7 +60,7 @@
     const el = e.target as HTMLInputElement | HTMLTextAreaElement;
     const val = el.value;
     cursorPos = el.selectionStart || 0;
-    onchange(val);
+    emit(val);
 
     // Check if cursor is inside a {{ }} block being typed
     const before = val.substring(0, cursorPos);
@@ -55,7 +81,7 @@
     const el = inputEl;
     if (!el) return;
 
-    const val = value;
+    const val = el.value;
     const before = val.substring(0, cursorPos);
     const openIdx = before.lastIndexOf("{{");
 
@@ -65,7 +91,9 @@
       const closeAfter = after.indexOf("}}");
       const afterClean = closeAfter >= 0 ? after.substring(closeAfter + 2) : after;
       const newVal = val.substring(0, openIdx) + `{{$${name}}}` + afterClean;
-      onchange(newVal);
+      el.value = newVal;
+      pendingValue = newVal;
+      flush();
     }
 
     showSuggestions = false;
@@ -82,6 +110,7 @@
   }
 
   function handleBlur() {
+    flush();
     // Delay to allow click on suggestion
     setTimeout(() => { showSuggestions = false; }, 150);
   }
@@ -91,6 +120,7 @@
   {#if multiline}
     <textarea
       bind:this={inputEl}
+      {id}
       {value}
       {placeholder}
       {rows}
@@ -101,6 +131,7 @@
   {:else}
     <input
       bind:this={inputEl}
+      {id}
       type="text"
       {value}
       {placeholder}

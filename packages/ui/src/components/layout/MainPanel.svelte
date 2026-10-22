@@ -23,7 +23,4 @@
 <style>
   .main-panel { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; padding: 0; }
   .main-panel.centered { display: flex; align-items: center; justify-content: center; padding: 24px; }
-  .placeholder { text-align: center; color: var(--text-muted); }
-  .placeholder h2 { margin-bottom: 8px; font-size: 18px; color: var(--text-secondary); }
-  .placeholder p { font-size: 14px; }
 </style>

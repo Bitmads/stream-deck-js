@@ -1,0 +1,748 @@
+{
+  "name": "default",
+  "devices": {
+    "TESTSERIAL01": {
+      "scenes": {
+        "f8a1de57-e30c-4032-9467-8296b066a951": {
+          "id": "f8a1de57-e30c-4032-9467-8296b066a951",
+          "name": "Default",
+          "keys": {
+            "0": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "light.test_bulb_1",
+                "ha_domain": "light",
+                "ha_service": "toggle",
+                "ha_attr": "",
+                "ha_control": "toggle"
+              },
+              "backgroundColor": "{{$ha.light.test_bulb_1.rgb_color|rgb}}",
+              "text": {
+                "text": "{{$ha.light.test_bulb_1.rgb_color|rgb}}",
+                "fontFamily": "sans-serif",
+                "fontSize": 14,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#ffffff",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "hidden": false
+              },
+              "texts": [
+                {
+                  "text": "{{$ha.light.test_bulb_1.rgb_color|rgb}}",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 14,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#ffffff",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "hidden": false
+                }
+              ],
+              "icon": {
+                "setId": "fa6-solid",
+                "iconName": "briefcase-medical",
+                "svgBody": "<path fill=\"currentColor\" d=\"M184 48h144c4.4 0 8 3.6 8 8v40H176V56c0-4.4 3.6-8 8-8m-56 8v40H64c-35.3 0-64 28.7-64 64v256c0 35.3 28.7 64 64 64h384c35.3 0 64-28.7 64-64V160c0-35.3-28.7-64-64-64h-64V56c0-30.9-25.1-56-56-56H184c-30.9 0-56 25.1-56 56m96 152c0-8.8 7.2-16 16-16h32c8.8 0 16 7.2 16 16v48h48c8.8 0 16 7.2 16 16v32c0 8.8-7.2 16-16 16h-48v48c0 8.8-7.2 16-16 16h-32c-8.8 0-16-7.2-16-16v-48h-48c-8.8 0-16-7.2-16-16v-32c0-8.8 7.2-16 16-16h48z\"/>",
+                "color": "#9141ac",
+                "size": 66,
+                "viewBox": "0 0 512 512"
+              }
+            },
+            "1": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "script.test_script_1",
+                "ha_domain": "script",
+                "ha_service": "humidifier_toggle",
+                "ha_attr": "",
+                "ha_control": "humidifier_toggle"
+              },
+              "backgroundColor": "#99c1f1",
+              "text": {
+                "text": "Current: {{$ha.humidifier.humidifier_master_bedroom.current_humidity}}%\nDesired: {{$ha.humidifier.humidifier_master_bedroom.humidity}}%\n",
+                "fontFamily": "Orbitron",
+                "fontSize": 11,
+                "fontWeight": "bold",
+                "fontStyle": "normal",
+                "color": "#1a5fb4",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "x": 50,
+                "y": 18
+              },
+              "icon": {
+                "setId": "solar",
+                "iconName": "water-linear",
+                "svgBody": "<path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M22 8.786c-1.588-.352-2.404-1.216-3.08-2.178c-.424-.602-1.355-.565-1.815.013C16.055 7.943 14.485 9 12 9C9.493 9 7.918 7.655 6.867 6.389c-.44-.53-1.28-.522-1.665.043C4.5 7.462 3.684 8.412 2 8.786m20 10c-1.588-.352-2.404-1.216-3.08-2.178c-.424-.602-1.355-.566-1.815.013C16.055 17.943 14.485 19 12 19c-2.507 0-4.082-1.345-5.133-2.611c-.44-.53-1.28-.522-1.665.043c-.701 1.03-1.518 1.98-3.202 2.354m20-5c-1.588-.352-2.404-1.216-3.08-2.178c-.424-.602-1.355-.566-1.815.013C16.055 12.943 14.485 14 12 14c-2.507 0-4.082-1.345-5.133-2.611c-.44-.53-1.28-.522-1.665.043c-.701 1.03-1.518 1.98-3.202 2.354\"/>",
+                "color": "#91b6e2",
+                "size": 72,
+                "viewBox": "0 0 24 24"
+              },
+              "texts": [
+                {
+                  "text": "Current: {{$ha.humidifier.humidifier_master_bedroom.current_humidity}}%\nDesired: {{$ha.humidifier.humidifier_master_bedroom.humidity}}%\n",
+                  "fontFamily": "Orbitron",
+                  "fontSize": 11,
+                  "fontWeight": "bold",
+                  "fontStyle": "normal",
+                  "color": "#1a5fb4",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "x": 50,
+                  "y": 18
+                }
+              ]
+            },
+            "2": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "button.test_sensor_identify",
+                "ha_domain": "button",
+                "ha_service": "press",
+                "ha_attr": "",
+                "ha_control": "press"
+              },
+              "backgroundColor": "#000000",
+              "text": {
+                "text": "{{$ha.sensor.test_temperature.state|f2c|round1}}\u00b0C",
+                "fontFamily": "Roboto",
+                "fontSize": 24,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#ffffff",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false
+              }
+            },
+            "3": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "script.test_toggle_tv",
+                "ha_domain": "script",
+                "ha_service": "toggle",
+                "ha_attr": "",
+                "ha_control": "toggle"
+              },
+              "backgroundColor": "{{$ha.binary_sensor.test_tv.state|map:on=#dd9800:*=#000000}}",
+              "text": {
+                "text": "{{$ha.sensor.test_now_playing.state|replace:-=}}",
+                "fontFamily": "sans-serif",
+                "fontSize": 18,
+                "fontWeight": "bold",
+                "fontStyle": "normal",
+                "color": "#deddda",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "wrap": "word",
+                "stroke": {
+                  "color": "#000000",
+                  "width": 2
+                },
+                "shadow": {
+                  "color": "#000000",
+                  "blur": 4,
+                  "offsetX": 1,
+                  "offsetY": 1
+                },
+                "hidden": false
+              },
+              "texts": [
+                {
+                  "text": "{{$ha.sensor.test_now_playing.state|replace:-=}}",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 18,
+                  "fontWeight": "bold",
+                  "fontStyle": "normal",
+                  "color": "#deddda",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "wrap": "word",
+                  "stroke": {
+                    "color": "#000000",
+                    "width": 2
+                  },
+                  "shadow": {
+                    "color": "#000000",
+                    "blur": 4,
+                    "offsetX": 1,
+                    "offsetY": 1
+                  },
+                  "hidden": false
+                },
+                {
+                  "text": "",
+                  "fontFamily": "monospace",
+                  "fontSize": 14,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#ffffff",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false
+                }
+              ],
+              "imageUrl": "https://homeassistant.example.com/api/media_player_proxy/media_player.test_media_player?token=REDACTED",
+              "imageFit": "cover",
+              "icon": {
+                "setId": "tabler",
+                "iconName": "player-eject",
+                "svgBody": "<path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M5 12h14l-7-8zm0 5a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z\"/>",
+                "color": "#ff7800",
+                "size": 72,
+                "viewBox": "0 0 24 24"
+              }
+            },
+            "4": {
+              "action": {
+                "id": "none",
+                "label": "None",
+                "icon": "",
+                "color": "#333"
+              },
+              "settings": {},
+              "backgroundColor": "#e01b24",
+              "texts": [
+                {
+                  "text": "BTC {{$stock.BTC.arrow}}\n{{$stock.BTC.price}}$",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 21,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#000000",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "hidden": false
+                }
+              ],
+              "text": {
+                "text": "BTC {{$stock.BTC.arrow}}\n{{$stock.BTC.price}}$",
+                "fontFamily": "sans-serif",
+                "fontSize": 21,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#000000",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "hidden": false
+              }
+            },
+            "5": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "switch.test_plug_1",
+                "ha_domain": "switch",
+                "ha_service": "toggle",
+                "ha_attr": "",
+                "ha_control": "toggle"
+              },
+              "backgroundColor": "{{$ha.switch.test_plug_1.state|map:on=#324780:*=#000000}}",
+              "text": {
+                "text": "{{$ha.switch.test_plug_1.state}}",
+                "fontFamily": "monospace",
+                "fontSize": 21,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#ffffff",
+                "hAlign": "center",
+                "vAlign": "bottom",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "wrap": "none"
+              },
+              "texts": [
+                {
+                  "text": "{{$ha.switch.test_plug_1.state}}",
+                  "fontFamily": "monospace",
+                  "fontSize": 21,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#ffffff",
+                  "hAlign": "center",
+                  "vAlign": "bottom",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "wrap": "none"
+                }
+              ],
+              "icon": {
+                "setId": "tabler",
+                "iconName": "device-computer-camera-off",
+                "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M6.15 6.153a7 7 0 0 0 9.696 9.696m2-2a7 7 0 0 0-9.699-9.695\"/><path d=\"M9.13 9.122a3 3 0 0 0 3.743 3.749m2-2a3 3 0 0 0-3.737-3.736M8 16l-2.091 3.486A1 1 0 0 0 6.766 21h10.468a1 1 0 0 0 .857-1.514L16 16M3 3l18 18\"/></g>",
+                "color": "#ffffff",
+                "size": 48,
+                "viewBox": "0 0 24 24",
+                "variable": "{{$ha.switch.test_plug_1.state}}",
+                "value": "off"
+              },
+              "icons": [
+                {
+                  "setId": "tabler",
+                  "iconName": "device-computer-camera-off",
+                  "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M6.15 6.153a7 7 0 0 0 9.696 9.696m2-2a7 7 0 0 0-9.699-9.695\"/><path d=\"M9.13 9.122a3 3 0 0 0 3.743 3.749m2-2a3 3 0 0 0-3.737-3.736M8 16l-2.091 3.486A1 1 0 0 0 6.766 21h10.468a1 1 0 0 0 .857-1.514L16 16M3 3l18 18\"/></g>",
+                  "color": "#ffffff",
+                  "size": 48,
+                  "viewBox": "0 0 24 24",
+                  "variable": "{{$ha.switch.test_plug_1.state}}",
+                  "value": "off"
+                },
+                {
+                  "setId": "tabler",
+                  "iconName": "device-computer-camera",
+                  "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M5 10a7 7 0 1 0 14 0a7 7 0 1 0-14 0\"/><path d=\"M9 10a3 3 0 1 0 6 0a3 3 0 1 0-6 0m-1 6l-2.091 3.486A1 1 0 0 0 6.766 21h10.468a1 1 0 0 0 .857-1.514L16 16\"/></g>",
+                  "color": "#ffffff",
+                  "size": 48,
+                  "viewBox": "0 0 24 24",
+                  "variable": "{{$ha.switch.test_plug_1.state}}",
+                  "value": "on"
+                }
+              ]
+            },
+            "6": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "script.test_script_2",
+                "ha_domain": "script",
+                "ha_service": "test_script_2",
+                "ha_attr": "",
+                "ha_control": "test_script_2"
+              },
+              "backgroundColor": "#000000",
+              "text": {
+                "text": "Kitchen",
+                "fontFamily": "sans-serif",
+                "fontSize": 20,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#33d17a",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "stroke": {
+                  "color": "#000000",
+                  "width": 2
+                }
+              },
+              "texts": [
+                {
+                  "text": "Kitchen",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 20,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#33d17a",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "stroke": {
+                    "color": "#000000",
+                    "width": 2
+                  }
+                }
+              ],
+              "icon": {
+                "setId": "tabler",
+                "iconName": "vacuum-cleaner",
+                "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0\"/><path d=\"M14 9a2 2 0 1 1-4 0a2 2 0 0 1 4 0m-2 7h.01\"/></g>",
+                "color": "#241f31",
+                "size": 72,
+                "viewBox": "0 0 24 24"
+              },
+              "icons": [
+                {
+                  "setId": "tabler",
+                  "iconName": "vacuum-cleaner",
+                  "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0\"/><path d=\"M14 9a2 2 0 1 1-4 0a2 2 0 0 1 4 0m-2 7h.01\"/></g>",
+                  "color": "#241f31",
+                  "size": 72,
+                  "viewBox": "0 0 24 24"
+                }
+              ]
+            },
+            "7": {
+              "action": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "settings": {
+                "ha_entity": "script.test_script_3",
+                "ha_domain": "script",
+                "ha_service": "test_script_3",
+                "ha_attr": "",
+                "ha_control": "test_script_3"
+              },
+              "backgroundColor": "#000000",
+              "text": {
+                "text": "Bedroom",
+                "fontFamily": "sans-serif",
+                "fontSize": 20,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#1c71d8",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false,
+                "stroke": {
+                  "color": "#000000",
+                  "width": 2
+                }
+              },
+              "texts": [
+                {
+                  "text": "Bedroom",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 20,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#1c71d8",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false,
+                  "stroke": {
+                    "color": "#000000",
+                    "width": 2
+                  }
+                }
+              ],
+              "icon": {
+                "setId": "tabler",
+                "iconName": "vacuum-cleaner",
+                "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0\"/><path d=\"M14 9a2 2 0 1 1-4 0a2 2 0 0 1 4 0m-2 7h.01\"/></g>",
+                "color": "#241f31",
+                "size": 72,
+                "viewBox": "0 0 24 24"
+              },
+              "icons": [
+                {
+                  "setId": "tabler",
+                  "iconName": "vacuum-cleaner",
+                  "svgBody": "<g fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"><path d=\"M21 12a9 9 0 1 1-18 0a9 9 0 0 1 18 0\"/><path d=\"M14 9a2 2 0 1 1-4 0a2 2 0 0 1 4 0m-2 7h.01\"/></g>",
+                  "color": "#241f31",
+                  "size": 72,
+                  "viewBox": "0 0 24 24"
+                }
+              ]
+            }
+          },
+          "triggers": [
+            {
+              "type": "manual"
+            }
+          ],
+          "encoders": {
+            "0": {
+              "pressAction": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "pressSettings": {
+                "ha_entity": "light.test_bulb_1",
+                "ha_domain": "light",
+                "ha_service": "toggle"
+              },
+              "rotateAction": {
+                "id": "ha-service",
+                "label": "HA Service Call",
+                "icon": "\ud83c\udfe0",
+                "color": "#03a9f4"
+              },
+              "rotateSettings": {
+                "ha_entity": "light.test_bulb_1",
+                "ha_domain": "light",
+                "ha_service": "turn_on",
+                "ha_control": "brightness",
+                "ha_attr": "brightness"
+              },
+              "label": "{{$ha.light.test_bulb_1.brightness}}",
+              "value": "{{$ha.light.test_bulb_1.brightness}}",
+              "min": "0",
+              "max": "255",
+              "step": 5
+            },
+            "1": {
+              "pressAction": {
+                "id": "none",
+                "label": "None",
+                "icon": "",
+                "color": "#333"
+              },
+              "pressSettings": {},
+              "rotateAction": {
+                "id": "none",
+                "label": "None",
+                "icon": "",
+                "color": "#333"
+              },
+              "rotateSettings": {},
+              "label": "",
+              "value": "1",
+              "min": "0",
+              "max": "100",
+              "step": 1
+            }
+          },
+          "strip": {
+            "backgroundColor": "#0a0a1a",
+            "items": [
+              {
+                "id": "cfad66e0-c991-4247-8197-e3553339e42c",
+                "type": "text",
+                "x": 23,
+                "y": 10,
+                "w": 143,
+                "h": 80,
+                "text": "Text",
+                "fontSize": 20,
+                "color": "#ffffff"
+              },
+              {
+                "id": "e4d52e51-b8cd-4541-88bf-210aedd73960",
+                "x": 0,
+                "y": 0,
+                "w": 163,
+                "h": 100,
+                "backgroundColor": "#241f31",
+                "texts": [
+                  {
+                    "text": "",
+                    "fontFamily": "sans-serif",
+                    "fontSize": 40,
+                    "fontWeight": "bold",
+                    "fontStyle": "normal",
+                    "color": "#ffffff",
+                    "hAlign": "center",
+                    "vAlign": "middle",
+                    "anchor": "center",
+                    "useAbsolutePos": false,
+                    "x": 0,
+                    "y": 20
+                  }
+                ],
+                "bar": {
+                  "value": "{{$ha.light.test_bulb_1.brightness}}",
+                  "min": "0",
+                  "max": "255",
+                  "color": "{{$ha.light.test_bulb_1.rgb_color|rgb}}",
+                  "position": "full",
+                  "height": 8
+                },
+                "tapAction": {
+                  "id": "ha-service",
+                  "label": "HA Service Call",
+                  "icon": "\ud83c\udfe0",
+                  "color": "#03a9f4"
+                },
+                "tapSettings": {
+                  "ha_entity": "light.test_bulb_1",
+                  "ha_domain": "light",
+                  "ha_service": "turn_on",
+                  "ha_control": "brightness",
+                  "ha_attr": "brightness"
+                },
+                "swipeAction": {
+                  "id": "ha-service",
+                  "label": "HA Service Call",
+                  "icon": "\ud83c\udfe0",
+                  "color": "#03a9f4"
+                },
+                "swipeSettings": {
+                  "ha_entity": "light.test_bulb_1",
+                  "ha_domain": "light",
+                  "ha_service": "turn_on",
+                  "ha_control": "brightness",
+                  "ha_attr": "brightness"
+                },
+                "longPressAction": {
+                  "id": "ha-service",
+                  "label": "HA Service Call",
+                  "icon": "\ud83c\udfe0",
+                  "color": "#03a9f4"
+                },
+                "longPressSettings": {
+                  "ha_entity": "light.test_bulb_1",
+                  "ha_domain": "light",
+                  "ha_service": "toggle",
+                  "ha_control": "toggle",
+                  "ha_attr": ""
+                },
+                "icon": {
+                  "setId": "lucide",
+                  "iconName": "lamp-floor",
+                  "svgBody": "<path fill=\"none\" stroke=\"currentColor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 10v12m5.929-14.371A1 1 0 0 1 17 9H7a1 1 0 0 1-.928-1.371l2-5A1 1 0 0 1 9 2h6a1 1 0 0 1 .928.629zM9 22h6\"/>",
+                  "color": "#5e5c64",
+                  "size": 72,
+                  "viewBox": "0 0 24 24"
+                }
+              },
+              {
+                "id": "4ddd5767-8136-4256-ba4d-6b00eea30718",
+                "x": 292,
+                "y": 0,
+                "w": 191,
+                "h": 100,
+                "backgroundColor": "#000000",
+                "texts": [
+                  {
+                    "text": "",
+                    "fontFamily": "sans-serif",
+                    "fontSize": 16,
+                    "fontWeight": "normal",
+                    "fontStyle": "normal",
+                    "color": "#ffffff",
+                    "hAlign": "center",
+                    "vAlign": "middle",
+                    "anchor": "center",
+                    "useAbsolutePos": false
+                  }
+                ],
+                "imageFit": "contain"
+              },
+              {
+                "id": "872c054a-420c-454a-8e74-32d7fc463d8c",
+                "x": 564,
+                "y": 6,
+                "w": 180,
+                "h": 80,
+                "backgroundColor": "#2a2a4a",
+                "texts": [
+                  {
+                    "text": "Item",
+                    "fontFamily": "sans-serif",
+                    "fontSize": 16,
+                    "fontWeight": "normal",
+                    "fontStyle": "normal",
+                    "color": "#ffffff",
+                    "hAlign": "center",
+                    "vAlign": "middle",
+                    "anchor": "center",
+                    "useAbsolutePos": false
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "activeSceneId": "f8a1de57-e30c-4032-9467-8296b066a951"
+    },
+    "TESTSERIAL02": {
+      "scenes": {
+        "e6a5e182-0edb-48cb-baf4-37fa4c392bcd": {
+          "id": "e6a5e182-0edb-48cb-baf4-37fa4c392bcd",
+          "name": "Default",
+          "keys": {
+            "14": {
+              "action": {
+                "id": "none",
+                "label": "None",
+                "icon": "",
+                "color": "#333"
+              },
+              "settings": {},
+              "backgroundColor": "#f6d32d",
+              "texts": [
+                {
+                  "text": "PIN",
+                  "fontFamily": "sans-serif",
+                  "fontSize": 14,
+                  "fontWeight": "normal",
+                  "fontStyle": "normal",
+                  "color": "#ffffff",
+                  "hAlign": "center",
+                  "vAlign": "middle",
+                  "anchor": "center",
+                  "useAbsolutePos": false
+                }
+              ],
+              "text": {
+                "text": "PIN",
+                "fontFamily": "sans-serif",
+                "fontSize": 14,
+                "fontWeight": "normal",
+                "fontStyle": "normal",
+                "color": "#ffffff",
+                "hAlign": "center",
+                "vAlign": "middle",
+                "anchor": "center",
+                "useAbsolutePos": false
+              },
+              "pinned": true
+            }
+          },
+          "triggers": [
+            {
+              "type": "manual"
+            }
+          ]
+        }
+      },
+      "activeSceneId": "e6a5e182-0edb-48cb-baf4-37fa4c392bcd"
+    }
+  },
+  "favorites": [],
+  "recent": [
+    "ha-service",
+    "http-request",
+    "back",
+    "ha-custom",
+    "switch-scene"
+  ]
+}

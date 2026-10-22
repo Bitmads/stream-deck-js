@@ -8,6 +8,11 @@ struct VariableChangedEvent {
     value: String,
 }
 
+#[derive(Clone, Serialize)]
+struct VariableDeletedEvent {
+    name: String,
+}
+
 #[tauri::command]
 pub fn set_variable(state: State<AppState>, app: AppHandle, name: String, value: String) -> Result<(), String> {
     let mut vars = state.variables.lock().map_err(|e| e.to_string())?;
@@ -28,9 +33,12 @@ pub fn list_variables(state: State<AppState>) -> Result<Vec<(String, String)>, S
     Ok(vars.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
 }
 
+/// Delete a variable and emit "variable-deleted" {name} if it existed.
 #[tauri::command]
-pub fn delete_variable(state: State<AppState>, name: String) -> Result<(), String> {
+pub fn delete_variable(state: State<AppState>, app: AppHandle, name: String) -> Result<(), String> {
     let mut vars = state.variables.lock().map_err(|e| e.to_string())?;
-    vars.remove(&name);
+    if vars.remove(&name).is_some() {
+        let _ = app.emit("variable-deleted", VariableDeletedEvent { name });
+    }
     Ok(())
 }

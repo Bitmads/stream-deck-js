@@ -1,62 +1,76 @@
-const API_BASE = "http://127.0.0.1:8484/api";
+importScripts("api.js");
+
 const SYNC_DEBOUNCE_MS = 500;
+const PER_TAB_FIELDS = ["title", "url", "id", "favicon"];
 
 let syncTimer = null;
+let lastError = "";
 
 // ─── API Helpers ─────────────────────────────────────────────
 
+function reportStatus(res) {
+  if (res.ok) {
+    if (lastError) console.log("[OSD] API reachable again");
+    lastError = "";
+    return;
+  }
+  const msg = res.status === 401
+    ? "API rejected the request (401): set a valid API key in the extension options"
+    : `API error: HTTP ${res.status}`;
+  if (msg !== lastError) console.warn(`[OSD] ${msg}`);
+  lastError = msg;
+}
+
 async function setVariable(name, value) {
   try {
-    await fetch(`${API_BASE}/variables/${encodeURIComponent(name)}`, {
+    const res = await osdFetch(`/variables/${encodeURIComponent(name)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ value: String(value) }),
     });
-  } catch (e) {
-    // API not available — silently ignore
+    reportStatus(res);
+  } catch {
+    if (lastError !== "unreachable") console.warn("[OSD] Open Stream Deck API not reachable");
+    lastError = "unreachable";
   }
 }
 
-async function clearVariables(prefix, count) {
-  for (let i = 0; i < count; i++) {
-    try {
-      await fetch(`${API_BASE}/variables/${encodeURIComponent(`${prefix}.${i}.title`)}`, { method: "DELETE" });
-      await fetch(`${API_BASE}/variables/${encodeURIComponent(`${prefix}.${i}.url`)}`, { method: "DELETE" });
-    } catch {}
-  }
+async function deleteVariable(name) {
+  try {
+    const res = await osdFetch(`/variables/${encodeURIComponent(name)}`, { method: "DELETE" });
+    // 404 just means it was never set.
+    if (res.status !== 404) reportStatus(res);
+  } catch {}
 }
 
 // ─── Tab Sync ────────────────────────────────────────────────
 
-let lastPinnedCount = 0;
+async function getLastPinnedCount() {
+  const { lastPinnedCount } = await chrome.storage.session.get("lastPinnedCount");
+  return typeof lastPinnedCount === "number" ? lastPinnedCount : 0;
+}
 
 async function syncPinnedTabs() {
   try {
     const tabs = await chrome.tabs.query({ pinned: true });
+    const previousCount = await getLastPinnedCount();
 
-    // Clear old variables if count decreased
-    if (tabs.length < lastPinnedCount) {
-      await clearVariables("chrome.pinned", lastPinnedCount);
-    }
-    lastPinnedCount = tabs.length;
-
-    // Set count
     await setVariable("chrome.pinned.count", tabs.length);
 
-    // Set per-tab variables
     for (let i = 0; i < tabs.length; i++) {
       const tab = tabs[i];
       await setVariable(`chrome.pinned.${i}.title`, tab.title || "");
       await setVariable(`chrome.pinned.${i}.url`, tab.url || "");
       await setVariable(`chrome.pinned.${i}.id`, tab.id);
-
-      // Get favicon as data URL if available
-      if (tab.favIconUrl) {
-        await setVariable(`chrome.pinned.${i}.favicon`, tab.favIconUrl);
-      }
+      if (tab.favIconUrl) await setVariable(`chrome.pinned.${i}.favicon`, tab.favIconUrl);
+      else await deleteVariable(`chrome.pinned.${i}.favicon`);
     }
 
-    console.log(`[OSD] Synced ${tabs.length} pinned tabs`);
+    // Remove every variable of slots that no longer have a pinned tab.
+    for (let i = tabs.length; i < previousCount; i++) {
+      for (const field of PER_TAB_FIELDS) await deleteVariable(`chrome.pinned.${i}.${field}`);
+    }
+    await chrome.storage.session.set({ lastPinnedCount: tabs.length });
   } catch (e) {
     console.error("[OSD] Sync failed:", e);
   }
@@ -71,7 +85,7 @@ function debouncedSync() {
 
 async function syncActiveTab() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (tab) {
       await setVariable("chrome.active.title", tab.title || "");
       await setVariable("chrome.active.url", tab.url || "");
@@ -80,37 +94,39 @@ async function syncActiveTab() {
   } catch {}
 }
 
-// ─── Tab Focus (called from Stream Deck via message) ─────────
-
-chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
-  if (request.action === "focusTab" && request.tabId) {
-    chrome.tabs.update(request.tabId, { active: true });
-    chrome.tabs.get(request.tabId, (tab) => {
-      if (tab?.windowId) chrome.windows.update(tab.windowId, { focused: true });
-    });
-    sendResponse({ ok: true });
-  }
-});
-
 // ─── Event Listeners ─────────────────────────────────────────
 
 chrome.tabs.onCreated.addListener(debouncedSync);
 chrome.tabs.onRemoved.addListener(debouncedSync);
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.pinned !== undefined || changeInfo.title) {
+chrome.tabs.onMoved.addListener(debouncedSync);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.pinned !== undefined || (tab.pinned && (changeInfo.title || changeInfo.url || changeInfo.favIconUrl))) {
     debouncedSync();
   }
-  if (changeInfo.status === "complete") {
+  if (tab.active && (changeInfo.title || changeInfo.url || changeInfo.status === "complete")) {
     syncActiveTab();
   }
 });
 chrome.tabs.onActivated.addListener(syncActiveTab);
+chrome.windows.onFocusChanged.addListener(syncActiveTab);
 
-// ─── Initial Sync ────────────────────────────────────────────
+// A new or changed API key: push everything again right away.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.apiKey) {
+    syncPinnedTabs();
+    syncActiveTab();
+  }
+});
 
-syncPinnedTabs();
-syncActiveTab();
+// Periodic re-sync (covers the app starting after the browser). MV3 service workers are
+// suspended when idle, so this uses chrome.alarms instead of setInterval.
+chrome.alarms.create("osd-resync", { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "osd-resync") {
+    syncPinnedTabs();
+    syncActiveTab();
+  }
+});
 
-// Re-sync periodically (in case API was down on startup)
-setInterval(syncPinnedTabs, 30000);
-setInterval(syncActiveTab, 5000);
+chrome.runtime.onStartup.addListener(() => { syncPinnedTabs(); syncActiveTab(); });
+chrome.runtime.onInstalled.addListener(() => { syncPinnedTabs(); syncActiveTab(); });

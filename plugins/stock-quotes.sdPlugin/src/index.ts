@@ -36,24 +36,29 @@ interface StockConfig {
   intervalMinutes: number;
 }
 
-const CONFIG_PATH = path.join(process.cwd(), "config.json");
+// Next to plugin.js, independent of the working directory the host starts us in.
+const CONFIG_PATH = path.join(__dirname, "config.json");
 
-function loadConfig(): StockConfig {
+const EMPTY_CONFIG: StockConfig = { apiKey: "", symbols: [], crypto: [], intervalMinutes: 5 };
+
+/** Read config.json. Returns null when it is missing or unreadable (e.g. mid-write). */
+function loadConfig(): StockConfig | null {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw);
     const parseList = (v: unknown): string[] =>
-      Array.isArray(v) ? v.map((s: string) => s.trim().toUpperCase()).filter(Boolean)
+      Array.isArray(v) ? v.map((s: unknown) => String(s).trim().toUpperCase()).filter(Boolean)
       : typeof v === "string" ? v.split(",").map((s: string) => s.trim().toUpperCase()).filter(Boolean)
       : [];
     return {
       apiKey: parsed.apiKey || "",
       symbols: parseList(parsed.symbols),
       crypto: parseList(parsed.crypto),
-      intervalMinutes: Math.max(1, Math.min(60, parsed.intervalMinutes || 5)),
+      intervalMinutes: Math.max(1, Math.min(60, Number(parsed.intervalMinutes) || 5)),
     };
-  } catch {
-    return { apiKey: "", symbols: [], intervalMinutes: 5 };
+  } catch (e) {
+    log(`Could not read config.json: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
 }
 
@@ -219,13 +224,20 @@ async function pollAll(config: StockConfig) {
 // ─── WebSocket Connection ─────────────────────────────────────
 
 let ws: WebSocket | null = null;
+let registered = false;
+let connectAttempts = 0;
+const MAX_CONNECT_ATTEMPTS = 10;
 
 function connectWs(args: CliArgs) {
+  connectAttempts++;
   ws = new WebSocket(`ws://127.0.0.1:${args.port}`);
 
   ws.on("open", () => {
+    connectAttempts = 0;
+    registered = true;
+    // Register with the manifest UUID the host passed in -pluginUUID.
+    ws!.send(JSON.stringify({ event: args.registerEvent || "registerPlugin", uuid: args.pluginUUID }));
     log("Connected to app");
-    ws!.send(JSON.stringify({ event: args.registerEvent, uuid: args.pluginUUID }));
   });
 
   ws.on("message", (data: WebSocket.Data) => {
@@ -238,8 +250,16 @@ function connectWs(args: CliArgs) {
   });
 
   ws.on("close", () => {
-    log("Disconnected, reconnecting in 5s...");
-    setTimeout(() => connectWs(args), 5000);
+    if (registered) {
+      // The app closed the connection (quit or plugin stopped): exit instead of lingering as an orphan.
+      console.log("[StockQuotes] Disconnected from app, exiting");
+      process.exit(0);
+    }
+    if (connectAttempts >= MAX_CONNECT_ATTEMPTS) {
+      console.error(`[StockQuotes] Could not connect to app on port ${args.port}, exiting`);
+      process.exit(1);
+    }
+    setTimeout(() => connectWs(args), 1000);
   });
 
   ws.on("error", () => {});
@@ -266,7 +286,11 @@ function sleep(ms: number): Promise<void> {
 // ─── Main ─────────────────────────────────────────────────────
 
 const args = parseArgs();
-let config = loadConfig();
+if (!args.port || !args.pluginUUID) {
+  console.error("[StockQuotes] Missing -port / -pluginUUID arguments; this plugin must be started by Open Stream Deck");
+  process.exit(1);
+}
+let config: StockConfig = loadConfig() ?? EMPTY_CONFIG;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 function startPolling() {
@@ -280,8 +304,13 @@ function startPolling() {
 
 // Watch config.json for changes
 fs.watchFile(CONFIG_PATH, { interval: 2000 }, () => {
+  const next = loadConfig();
+  if (!next) {
+    log("Config changed but could not be read; keeping the previous settings");
+    return;
+  }
   log("Config changed, reloading...");
-  config = loadConfig();
+  config = next;
   startPolling();
 });
 

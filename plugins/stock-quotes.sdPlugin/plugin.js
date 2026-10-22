@@ -3686,20 +3686,22 @@ function parseArgs() {
   }
   return parsed;
 }
-var CONFIG_PATH = path.join(process.cwd(), "config.json");
+var CONFIG_PATH = path.join(__dirname, "config.json");
+var EMPTY_CONFIG = { apiKey: "", symbols: [], crypto: [], intervalMinutes: 5 };
 function loadConfig() {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw);
-    const parseList = (v) => Array.isArray(v) ? v.map((s) => s.trim().toUpperCase()).filter(Boolean) : typeof v === "string" ? v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
+    const parseList = (v) => Array.isArray(v) ? v.map((s) => String(s).trim().toUpperCase()).filter(Boolean) : typeof v === "string" ? v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
     return {
       apiKey: parsed.apiKey || "",
       symbols: parseList(parsed.symbols),
       crypto: parseList(parsed.crypto),
-      intervalMinutes: Math.max(1, Math.min(60, parsed.intervalMinutes || 5))
+      intervalMinutes: Math.max(1, Math.min(60, Number(parsed.intervalMinutes) || 5))
     };
-  } catch {
-    return { apiKey: "", symbols: [], intervalMinutes: 5 };
+  } catch (e) {
+    log(`Could not read config.json: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
   }
 }
 var rateLimitUntil = 0;
@@ -3841,11 +3843,17 @@ async function pollAll(config2) {
   }
 }
 var ws = null;
+var registered = false;
+var connectAttempts = 0;
+var MAX_CONNECT_ATTEMPTS = 10;
 function connectWs(args2) {
+  connectAttempts++;
   ws = new wrapper_default(`ws://127.0.0.1:${args2.port}`);
   ws.on("open", () => {
+    connectAttempts = 0;
+    registered = true;
+    ws.send(JSON.stringify({ event: args2.registerEvent || "registerPlugin", uuid: args2.pluginUUID }));
     log("Connected to app");
-    ws.send(JSON.stringify({ event: args2.registerEvent, uuid: args2.pluginUUID }));
   });
   ws.on("message", (data) => {
     try {
@@ -3856,8 +3864,15 @@ function connectWs(args2) {
     }
   });
   ws.on("close", () => {
-    log("Disconnected, reconnecting in 5s...");
-    setTimeout(() => connectWs(args2), 5e3);
+    if (registered) {
+      console.log("[StockQuotes] Disconnected from app, exiting");
+      process.exit(0);
+    }
+    if (connectAttempts >= MAX_CONNECT_ATTEMPTS) {
+      console.error(`[StockQuotes] Could not connect to app on port ${args2.port}, exiting`);
+      process.exit(1);
+    }
+    setTimeout(() => connectWs(args2), 1e3);
   });
   ws.on("error", () => {
   });
@@ -3878,7 +3893,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 var args = parseArgs();
-var config = loadConfig();
+if (!args.port || !args.pluginUUID) {
+  console.error("[StockQuotes] Missing -port / -pluginUUID arguments; this plugin must be started by Open Stream Deck");
+  process.exit(1);
+}
+var config = loadConfig() ?? EMPTY_CONFIG;
 var pollTimer = null;
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
@@ -3889,8 +3908,13 @@ function startPolling() {
   log(`Polling every ${config.intervalMinutes}m for: ${all.join(", ") || "(none)"}`);
 }
 fs.watchFile(CONFIG_PATH, { interval: 2e3 }, () => {
+  const next = loadConfig();
+  if (!next) {
+    log("Config changed but could not be read; keeping the previous settings");
+    return;
+  }
   log("Config changed, reloading...");
-  config = loadConfig();
+  config = next;
   startPolling();
 });
 connectWs(args);

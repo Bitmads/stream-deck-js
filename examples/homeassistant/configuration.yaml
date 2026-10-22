@@ -1,6 +1,7 @@
 # ══════════════════════════════════════════════════════════════
 # Open Stream Deck ↔ Home Assistant Integration
 # Add these to your Home Assistant configuration.yaml
+# Replace STREAM_DECK_IP and YOUR_DECK_API_KEY (Open Stream Deck: Settings > API Keys)
 # ══════════════════════════════════════════════════════════════
 
 # ─── REST Commands (HA → Stream Deck) ────────────────────────
@@ -10,6 +11,8 @@ rest_command:
   deck_set_variable:
     url: "http://STREAM_DECK_IP:8484/api/variables/{{ name }}"
     method: PUT
+    headers:
+      Authorization: "Bearer YOUR_DECK_API_KEY"
     content_type: "application/json"
     payload: '{"value": "{{ value }}"}'
 
@@ -17,6 +20,8 @@ rest_command:
   deck_execute_action:
     url: "http://STREAM_DECK_IP:8484/api/actions/execute"
     method: POST
+    headers:
+      Authorization: "Bearer YOUR_DECK_API_KEY"
     content_type: "application/json"
     payload: '{"action_type": "{{ action_type }}", "settings": {{ settings }}}'
 
@@ -24,6 +29,8 @@ rest_command:
   deck_set_brightness:
     url: "http://STREAM_DECK_IP:8484/api/devices/{{ serial }}/brightness"
     method: POST
+    headers:
+      Authorization: "Bearer YOUR_DECK_API_KEY"
     content_type: "application/json"
     payload: '{"percent": {{ percent }}}'
 

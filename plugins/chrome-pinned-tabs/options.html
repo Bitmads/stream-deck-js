@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { min-width: 320px; padding: 16px; font-family: -apple-system, sans-serif; font-size: 13px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; font-family: monospace; }
+    .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+    .hint { color: #666; font-size: 12px; line-height: 1.5; margin-top: 10px; }
+    #result { font-size: 12px; }
+    .ok { color: #1e8e3e; }
+    .err { color: #d93025; }
+  </style>
+</head>
+<body>
+  <label for="apiKey">Open Stream Deck API key</label>
+  <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a key from Settings → API Keys" />
+  <div class="row">
+    <button id="save">Save</button>
+    <button id="test">Test connection</button>
+    <span id="result"></span>
+  </div>
+  <p class="hint">
+    Needed once any API key exists in Open Stream Deck (Settings → API Keys).
+    Leave empty if you have not created any key. The key is stored only in this browser profile.
+  </p>
+  <script src="api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
