@@ -107,6 +107,7 @@ open-stream-deck/
 │   │           ├── Profiles.svelte
 │   │           ├── Plugins.svelte
 │   │           └── Settings.svelte  # API keys/bind + HA connection + Node path
+│   ├── deck/                    # Deck-as-code: TypeScript decks → validated profile, applied via REST or files
 │   └── plugin-sdk/              # TypeScript SDK for external plugins
 ├── plugins/
 │   ├── chrome-pinned-tabs/      # Chrome extension
@@ -294,8 +295,8 @@ Field types are in `packages/ui/src/lib/types/profile.ts`; `utils/profile.ts` pa
 - Keys and encoders are keyed by index strings (`"0"`, `"1"`, ...); key indices are row-major. Strip items are an array with unique `id`s.
 - A key (`KeyAssignment`) has `action` (`{id, label, icon, color}`), `settings` (string values), `backgroundColor`, optional `imageDataUrl` / `imageUrl` + `imageFit`, `texts[]`, `icons[]` and `pinned`. `text` and `icon` are legacy single-layer fields still read when `texts` / `icons` are absent.
 - An encoder has `pressAction`/`pressSettings`, `rotateAction`/`rotateSettings`, `label`, and `value`/`min`/`max` (strings, numbers or templates) plus a numeric `step`.
-- The strip (`StripConfig`) has a `backgroundColor` and `items[]` with a rectangle on the 800x100 strip, visuals, an optional `bar`, and tap/long-press/swipe actions with their settings.
-- Scene `triggers` are `{type: "window" | "manual", app_name?, window_title?, priority?, mode?}`. Window patterns are case-insensitive substrings or `regex:<pattern>`; the highest `priority` wins, and a window trigger with neither field set never matches. A matching trigger switches the selected device to its scene (`mode` is not used).
+- The strip (`StripConfig`) has a `backgroundColor` and `items[]` with a rectangle on the 800x100 strip, visuals, an optional `bar`, and tap/long-press/swipe actions with their settings. A swipe belongs to the topmost item it starts on (overshooting into a neighbour does not act there); only a swipe starting outside every item goes to the topmost item its x range overlaps.
+- Scene `triggers` are `{type: "window" | "manual", app_name?, window_title?, priority?, mode?}`. Window patterns are case-insensitive substrings or `regex:<pattern>`; the highest `priority` wins, and a window trigger with neither field set never matches. Triggers are evaluated on every device of the profile (`store.applyWindowTriggers`, `lib/utils/window-trigger.ts`): a match switches that device to its scene, and when nothing matches a device that is still on the scene a trigger chose returns to its first scene (`mode` is not used).
 - `DeviceConfig.brightness` (0-100) is applied when the device opens.
 - Legacy single-device files (top-level `scenes` / `activeSceneId`) are migrated onto the first bound device.
 - Pinned keys are shown in the device's other scenes where that slot is empty, as a render-time overlay; they are never copied.

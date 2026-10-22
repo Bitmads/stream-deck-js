@@ -1,0 +1,21 @@
+{
+  "name": "@open-stream-deck/deck",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Deck-as-code: build, validate and apply Open Stream Deck profiles from TypeScript",
+  "type": "module",
+  "scripts": {
+    "deck": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/cli.ts",
+    "test": "vitest run",
+    "check": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@iconify/json": "^2.2.454",
+    "@iconify/utils": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.7"
+  }
+}

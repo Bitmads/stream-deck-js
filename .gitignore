@@ -19,3 +19,6 @@ plugins/*/config.json
 nohup.out
 xaa
 .log*
+
+# Personal deck-as-code files (serials, entity ids, hostnames)
+decks/

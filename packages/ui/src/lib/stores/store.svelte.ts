@@ -11,6 +11,7 @@ import {
   legacyDeviceConfig, serializeProfile,
 } from "../utils/profile";
 import { setDefaultVarLookup } from "../utils/render-key";
+import { isIgnoredWindow, pickTriggerScene } from "../utils/window-trigger";
 
 // Persisted model types live in ../types/profile (importable from Node); re-exported for existing imports.
 export type {
@@ -96,6 +97,8 @@ class AppStore {
   boundSerial = $state<string | null>(null);
   /** Runtime back-navigation stacks per device (not persisted). */
   sceneStacks = $state<Record<string, string[]>>({});
+  /** Per device: the scene the last window trigger switched to (the fallback only undoes that switch). */
+  private triggerScenes: Record<string, string | null> = {};
   /** Last profile load/reload error (bad JSON or shape); null after a successful load. */
   loadError = $state<string | null>(null);
   /** Last action/save error, for display. */
@@ -776,6 +779,32 @@ class AppStore {
     this.afterSceneChange(t.serial, prevId);
   }
 
+  /**
+   * Focused window changed: on every device of the profile, switch to the scene whose window trigger
+   * matches with the highest priority. When nothing matches and the scene on screen is still the one
+   * a trigger chose, go back to the device's first scene; a manual switch since then (Header, key
+   * press, API) wins.
+   */
+  applyWindowTriggers(appName: string, windowTitle: string) {
+    if (isIgnoredWindow(appName, windowTitle)) return;
+    for (const serial of Object.keys(this.profileDevices)) {
+      const scenes = this.getScenes(serial);
+      const currentId = this.getActiveSceneId(serial);
+      const best = pickTriggerScene(scenes, appName, windowTitle);
+      if (best) {
+        if (best !== currentId) {
+          this.triggerScenes[serial] = best;
+          this.switchScene(best, false, serial);
+        }
+      } else if (this.triggerScenes[serial] && currentId === this.triggerScenes[serial]) {
+        this.triggerScenes[serial] = null;
+        if (scenes[0] && scenes[0].id !== currentId) this.switchScene(scenes[0].id, false, serial);
+      } else {
+        this.triggerScenes[serial] = null;
+      }
+    }
+  }
+
   // ═══ Selection ═════════════════════════════════════════════
 
   selectKey(index: number | null) {
@@ -1273,9 +1302,17 @@ class AppStore {
     return null;
   }
 
-  /** Swipe intersects an item if the swipe's x range overlaps the item's x range. */
+  /**
+   * A swipe belongs to the item it starts on (topmost first), so overshooting into a neighbour never
+   * acts there. Only a swipe that starts outside every item falls back to the topmost item whose x
+   * range the swipe overlaps.
+   */
   private hitTestSwipe(serial: string, fromX: number, toX: number): StripItem | null {
     const items = this.getStripConfigForDevice(serial).items;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (fromX >= it.x && fromX <= it.x + it.w) return it;
+    }
     const minX = Math.min(fromX, toX), maxX = Math.max(fromX, toX);
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];

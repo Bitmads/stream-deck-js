@@ -8,7 +8,7 @@
   import PropertyPanel from "./components/layout/PropertyPanel.svelte";
   import StatusBar from "./components/layout/StatusBar.svelte";
   import { refreshDevices } from "./lib/stores/devices.svelte";
-  import { getScenes, getActiveSceneId, switchScene, undo, redo, initStore, store } from "./lib/stores/editor.svelte";
+  import { undo, redo, initStore, store } from "./lib/stores/editor.svelte";
   import { startDeviceSync } from "./lib/stores/device-sync.svelte";
   import { initVariables } from "./lib/stores/variables.svelte";
   import { registerPlugin, initPluginRegistry } from "./lib/stores/plugins.svelte";
@@ -193,67 +193,10 @@
   $effect(() => {
     const unlisten = listen<{ app_name: string; title: string }>("active-window-changed", (event) => {
       const { app_name, title } = event.payload;
-      untrack(() => matchWindowTrigger(app_name, title));
+      untrack(() => store.applyWindowTriggers(app_name, title));
     });
     return () => { unlisten.then(fn => fn()); };
   });
-
-  /** Scene the last window trigger switched to; the fallback only undoes our own switch. */
-  let triggerSceneId: string | null = null;
-
-  function matchWindowTrigger(appName: string, windowTitle: string) {
-    const ignoredApps = ["open stream deck", "zenity", "gdialog", "nemo", "nautilus", "thunar"];
-    if (ignoredApps.some(a => appName.toLowerCase().includes(a)) || windowTitle.toLowerCase().includes("open stream deck")) {
-      return;
-    }
-
-    const scenes = getScenes();
-    const currentId = getActiveSceneId();
-
-    let bestScene: string | null = null;
-    let bestPriority = -Infinity;
-
-    for (const scene of scenes) {
-      for (const trigger of scene.triggers) {
-        if (trigger.type !== "window") continue;
-        const appPattern = trigger.app_name?.trim() ?? "";
-        const titlePattern = trigger.window_title?.trim() ?? "";
-        // A trigger with no criteria would match every window: it stays inactive until configured.
-        if (!appPattern && !titlePattern) continue;
-        const appMatch = !appPattern || matchPattern(appName, appPattern);
-        const titleMatch = !titlePattern || matchPattern(windowTitle, titlePattern);
-        if (appMatch && titleMatch && (trigger.priority ?? 0) > bestPriority) {
-          bestPriority = trigger.priority ?? 0;
-          bestScene = scene.id;
-        }
-      }
-    }
-
-    if (bestScene) {
-      if (bestScene !== currentId) {
-        triggerSceneId = bestScene;
-        switchScene(bestScene);
-      }
-    } else if (triggerSceneId && currentId === triggerSceneId) {
-      // Only fall back if the scene on screen is still the one a trigger chose; a manual switch
-      // since then (Header, key press, API) wins.
-      triggerSceneId = null;
-      if (scenes[0] && scenes[0].id !== currentId) switchScene(scenes[0].id);
-    } else {
-      triggerSceneId = null;
-    }
-  }
-
-  function matchPattern(value: string, pattern: string): boolean {
-    // Support simple wildcards and regex
-    if (pattern.startsWith("regex:")) {
-      try {
-        return new RegExp(pattern.slice(6), "i").test(value);
-      } catch { return false; }
-    }
-    // Simple case-insensitive contains
-    return value.toLowerCase().includes(pattern.toLowerCase());
-  }
 </script>
 
 <div class="app-layout">

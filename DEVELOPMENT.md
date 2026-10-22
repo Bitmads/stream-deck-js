@@ -161,6 +161,10 @@ pnpm --filter @open-stream-deck/ui check
 pnpm --filter @open-stream-deck/ui test
 pnpm --filter @open-stream-deck/ui build
 
+# Deck-as-code generator
+pnpm --filter @open-stream-deck/deck test
+pnpm --filter @open-stream-deck/deck check
+
 # Full app
 cargo tauri dev
 
@@ -182,6 +186,8 @@ npm run typecheck
 ```
 
 During `cargo tauri dev` the repository's `plugins/` folder is scanned directly; release builds copy the bundled plugins into `~/.config/open-stream-deck/plugins/`.
+
+`packages/deck` builds, validates and applies profiles from TypeScript deck files (`pnpm --filter @open-stream-deck/deck deck build <deck.ts> --dry-run`); see `packages/deck/README.md`. Personal decks belong in the gitignored `decks/` folder.
 
 `packages/plugin-sdk` (`pnpm --filter @open-streamdeck/sdk build`) is a TypeScript helper for writing plugins against the subset of the protocol listed in the README.
 

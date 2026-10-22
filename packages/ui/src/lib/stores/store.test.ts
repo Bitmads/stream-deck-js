@@ -480,3 +480,58 @@ describe("variables", () => {
     expect(store.variables["api.gone"]).toBeUndefined();
   });
 });
+
+describe("strip swipes", () => {
+  it("belong to the item they start on, even when they overshoot into a neighbour", async () => {
+    await boot();
+    const seen: { item: string; to_ratio: string }[] = [];
+    registerActionType({ id: "sw", label: "sw", icon: "", color: "" }, async (s) => { seen.push({ item: s.item, to_ratio: s.to_ratio }); });
+    const sw = { id: "sw", label: "sw", icon: "", color: "" };
+    const scene = store.getActiveScene(PLUS)!;
+    scene.strip = {
+      backgroundColor: "#000000",
+      items: [
+        { id: "a", x: 0, y: 0, w: 200, h: 100, swipeAction: sw, swipeSettings: { item: "a" } },
+        { id: "b", x: 200, y: 0, w: 200, h: 100 }, // no swipe action
+        { id: "c", x: 400, y: 0, w: 200, h: 100, swipeAction: sw, swipeSettings: { item: "c" } },
+      ],
+    };
+    store.handleStripSwipeForDevice(PLUS, 201, 50, 450, 50); // starts on b: nothing, never c
+    store.handleStripSwipeForDevice(PLUS, 20, 50, 260, 50); // starts on a, overshoots into b
+    store.handleStripSwipeForDevice(PLUS, 590, 50, 420, 50);
+    await Promise.resolve();
+    expect(seen).toEqual([{ item: "a", to_ratio: "1" }, { item: "c", to_ratio: "0.1" }]);
+    unregisterActionType("sw");
+  });
+});
+
+describe("window triggers", () => {
+  it("switch scenes on every device, not only the edited one, and fall back per device", async () => {
+    await boot();
+    expect(store.boundSerial).toBe(PLUS);
+    const plusHome = store.getActiveSceneId(PLUS)!;
+    const otherHome = store.getActiveSceneId(OTHER)!;
+    await store.selectDevice(store.devices[1]);
+    const ide = store.createScene("IDE");
+    ide.triggers = [{ type: "window", app_name: "regex:^jetbrains-phpstorm$", priority: 10 }];
+    const loose = store.createScene("Loose");
+    loose.triggers = [{ type: "window", app_name: "phpstorm", priority: 1 }];
+    await store.selectDevice(store.devices[0]); // the PLUS deck is edited, OTHER owns the triggers
+
+    store.applyWindowTriggers("jetbrains-phpstorm", "project – main.php");
+    expect(store.getActiveSceneId(OTHER)).toBe(ide.id); // highest priority wins
+    expect(store.getActiveSceneId(PLUS)).toBe(plusHome); // no triggers there: untouched
+
+    store.applyWindowTriggers("Open Stream Deck", "Open Stream Deck"); // ignored window: no change
+    expect(store.getActiveSceneId(OTHER)).toBe(ide.id);
+
+    store.applyWindowTriggers("Google-chrome", "New Tab");
+    expect(store.getActiveSceneId(OTHER)).toBe(otherHome); // nothing matches: back to the first scene
+
+    // A manual switch after a trigger is kept when the next window matches nothing.
+    store.applyWindowTriggers("jetbrains-phpstorm", "x");
+    store.switchScene(loose.id, false, OTHER);
+    store.applyWindowTriggers("Google-chrome", "y");
+    expect(store.getActiveSceneId(OTHER)).toBe(loose.id);
+  });
+});

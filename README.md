@@ -270,6 +270,7 @@ open-stream-deck/
 │   │       ├── plugins/      #   Built-in action plugins (Home Assistant, multi-action, ...) and the external plugin bridge
 │   │       ├── types/        #   Persisted profile types
 │   │       └── utils/        #   Key/strip renderers, templates, icons, image cache
+│   ├── deck/                 # Deck-as-code: build, validate and apply profiles from TypeScript
 │   └── plugin-sdk/           # TypeScript SDK for external plugins
 ├── plugins/
 │   ├── chrome-pinned-tabs/   # Chrome extension for tab sync
