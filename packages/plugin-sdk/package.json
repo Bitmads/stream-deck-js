@@ -1,0 +1,16 @@
+{
+  "name": "@open-streamdeck/sdk",
+  "version": "0.1.0",
+  "description": "SDK for building Open Stream Deck plugins (Elgato SDK compatible)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

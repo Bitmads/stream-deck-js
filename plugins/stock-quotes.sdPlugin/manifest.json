@@ -1,0 +1,16 @@
+{
+  "Name": "Stock Quotes",
+  "Description": "Live stock prices as variables via Finnhub.io. Use {{$stock.TSLA.price}} in text labels.",
+  "Version": "1.0.0",
+  "UUID": "com.open-streamdeck.stock-quotes",
+  "Author": "Open Stream Deck",
+  "Icon": "icon",
+  "CodePath": "plugin.js",
+  "SDKVersion": 2,
+  "Actions": [],
+  "OS": [
+    { "Platform": "linux", "MinimumVersion": "0" },
+    { "Platform": "mac", "MinimumVersion": "0" },
+    { "Platform": "windows", "MinimumVersion": "0" }
+  ]
+}

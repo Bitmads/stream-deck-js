@@ -19,12 +19,13 @@ export interface TextConfig {
 
 export interface IconConfig {
   setId: string; iconName: string; svgBody: string; color: string; size: number; viewBox: string;
+  variable?: string; value?: string;
 }
 
 export interface KeyAssignment {
   action: ActionDef; settings: Record<string, string>; backgroundColor: string;
   imagePath?: string; imageDataUrl?: string; imageUrl?: string; imageFit?: "fill" | "cover" | "contain" | "none";
-  text?: TextConfig; texts?: TextConfig[]; icon?: IconConfig; pinned?: boolean;
+  text?: TextConfig; texts?: TextConfig[]; icon?: IconConfig; icons?: IconConfig[]; pinned?: boolean;
 }
 
 export interface SceneTrigger {
@@ -642,7 +643,7 @@ class AppStore {
       action, settings: this.getDefaultSettings(action.id),
       backgroundColor: existing?.backgroundColor || "#000000",
       imagePath: existing?.imagePath, imageDataUrl: existing?.imageDataUrl,
-      text: existing?.text, icon: existing?.icon,
+      text: existing?.text, texts: existing?.texts, icon: existing?.icon, icons: existing?.icons,
     };
     this.trackRecent(action.id);
     this.revision++;
@@ -726,15 +727,57 @@ class AppStore {
     return a.texts?.length ? a.texts : (a.text ? [a.text] : []);
   }
 
-  setKeyIcon(keyIndex: number, iconConfig: IconConfig) {
+  setKeyIcon(keyIndex: number, iconConfig: IconConfig, iconIndex: number = 0) {
     this.ensureKey(keyIndex);
-    const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.icon = iconConfig; this.revision++; this.saveAndSync(keyIndex); }
+    const scene = this.activeScene;
+    if (!scene) return;
+    const a = scene.keys[String(keyIndex)];
+    if (!a) return;
+    if (!a.icons) a.icons = [];
+    while (a.icons.length <= iconIndex) a.icons.push({ setId: '', iconName: '', svgBody: '', color: '#ffffff', size: 48, viewBox: '0 0 24 24' });
+    a.icons[iconIndex] = iconConfig;
+    a.icon = a.icons[0];
+    this.revision++;
+    this.saveAndSync(keyIndex);
   }
 
   removeKeyIcon(keyIndex: number) {
     const a = this.activeScene?.keys[String(keyIndex)];
-    if (a) { a.icon = undefined; this.revision++; this.saveAndSync(keyIndex); }
+    if (a) { a.icon = undefined; a.icons = undefined; this.revision++; this.saveAndSync(keyIndex); }
+  }
+
+  getKeyIcons(keyIndex: number): IconConfig[] {
+    const a = this.getKeyAssignment(keyIndex);
+    if (!a) return [];
+    return a.icons?.length ? a.icons : (a.icon ? [a.icon] : []);
+  }
+
+  addKeyIcon(keyIndex: number) {
+    this.ensureKey(keyIndex);
+    const scene = this.activeScene;
+    if (!scene) return;
+    const a = scene.keys[String(keyIndex)];
+    if (!a) return;
+    if (!a.icons) a.icons = a.icon ? [a.icon] : [];
+    const base = a.icons[0] || { setId: '', iconName: '', svgBody: '', color: '#ffffff', size: 48, viewBox: '0 0 24 24' };
+    a.icons.push({ ...base, variable: '', value: '' });
+    a.icon = a.icons[0];
+    this.revision++;
+    this.saveAndSync(keyIndex);
+  }
+
+  removeKeyIconAt(keyIndex: number, iconIndex: number) {
+    const scene = this.activeScene;
+    if (!scene) return;
+    const a = scene.keys[String(keyIndex)];
+    if (!a?.icons || a.icons.length <= 1) {
+      this.removeKeyIcon(keyIndex);
+      return;
+    }
+    a.icons.splice(iconIndex, 1);
+    a.icon = a.icons[0];
+    this.revision++;
+    this.saveAndSync(keyIndex);
   }
 
   togglePinned(keyIndex: number) {

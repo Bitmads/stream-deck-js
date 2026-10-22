@@ -1,2 +1,21 @@
-node_modules
-dist
+node_modules/
+target/
+dist/
+legacy/
+.idea/
+*.log
+
+# Tauri
+packages/ui/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / local plugin config (contains API keys)
+plugins/*/config.json
+
+# Junk
+nohup.out
+xaa
+.log*

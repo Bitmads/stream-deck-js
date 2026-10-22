@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "apiKey": {
+      "type": "string",
+      "format": "password",
+      "title": "Finnhub API Key",
+      "description": "For stocks only. Get a free key at finnhub.io/register"
+    },
+    "symbols": {
+      "type": "array",
+      "title": "Stocks",
+      "placeholder": "TSLA",
+      "description": "Stock ticker symbols (requires Finnhub API key)"
+    },
+    "crypto": {
+      "type": "array",
+      "title": "Crypto",
+      "placeholder": "BTC",
+      "description": "Cryptocurrency symbols — no API key needed (BTC, ETH, SOL, DOGE, etc.)"
+    },
+    "intervalMinutes": {
+      "type": "number",
+      "title": "Poll Interval (minutes)",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 5
+    }
+  }
+}

@@ -38,6 +38,24 @@
     config = { ...config, [key]: value };
   }
 
+  let tagInputs = $state<Record<string, string>>({});
+
+  function addTag(key: string) {
+    const val = (tagInputs[key] || "").trim().toUpperCase();
+    if (!val) return;
+    const arr = Array.isArray(config[key]) ? [...config[key]] : [];
+    if (!arr.includes(val)) {
+      arr.push(val);
+      updateField(key, arr);
+    }
+    tagInputs[key] = "";
+  }
+
+  function removeTag(key: string, item: string) {
+    const arr = Array.isArray(config[key]) ? config[key].filter((v: string) => v !== item) : [];
+    updateField(key, arr);
+  }
+
   load();
 </script>
 
@@ -51,7 +69,17 @@
       {#if f.description}
         <p class="cfg-hint">{f.description}</p>
       {/if}
-      {#if f.type === "boolean"}
+      {#if f.type === "array"}
+        <div class="tag-list">
+          {#each (Array.isArray(config[key]) ? config[key] : []) as item}
+            <span class="tag">{item}<button class="tag-remove" onclick={() => removeTag(key, item)}>&times;</button></span>
+          {/each}
+        </div>
+        <div class="tag-add">
+          <input type="text" bind:value={tagInputs[key]} placeholder={f.placeholder || "Add..."} onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(key); }}} />
+          <button class="tag-add-btn" onclick={() => addTag(key)}>Add</button>
+        </div>
+      {:else if f.type === "boolean"}
         <label class="cfg-toggle">
           <input type="checkbox" checked={!!config[key]} onchange={(e) => updateField(key, (e.target as HTMLInputElement).checked)} />
           <span>{config[key] ? "Enabled" : "Disabled"}</span>
@@ -111,4 +139,26 @@
   .cfg-save:hover { background: var(--accent-hover); }
   .cfg-save:disabled { opacity: 0.6; cursor: default; }
   .cfg-error { font-size: 11px; color: var(--danger); margin-top: 4px; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag {
+    display: flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 12px;
+    background: var(--accent); color: white;
+    font-size: 12px; font-weight: 500;
+  }
+  .tag-remove {
+    background: none; border: none; color: rgba(255,255,255,0.7);
+    font-size: 14px; cursor: pointer; padding: 0 2px; line-height: 1;
+  }
+  .tag-remove:hover { color: white; }
+  .tag-add { display: flex; gap: 6px; margin-top: 4px; }
+  .tag-add input { flex: 1; }
+  .tag-add-btn {
+    height: var(--input-h, 34px); padding: 0 14px;
+    border-radius: var(--radius-sm); background: var(--bg-tertiary);
+    color: var(--text-secondary); font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border);
+  }
+  .tag-add-btn:hover { color: var(--accent); border-color: var(--accent); }
 </style>

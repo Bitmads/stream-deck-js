@@ -3691,9 +3691,11 @@ function loadConfig() {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
     const parsed = JSON.parse(raw);
+    const parseList = (v) => Array.isArray(v) ? v.map((s) => s.trim().toUpperCase()).filter(Boolean) : typeof v === "string" ? v.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [];
     return {
       apiKey: parsed.apiKey || "",
-      symbols: Array.isArray(parsed.symbols) ? parsed.symbols.map((s) => s.trim().toUpperCase()).filter(Boolean) : typeof parsed.symbols === "string" ? parsed.symbols.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean) : [],
+      symbols: parseList(parsed.symbols),
+      crypto: parseList(parsed.crypto),
       intervalMinutes: Math.max(1, Math.min(60, parsed.intervalMinutes || 5))
     };
   } catch {
@@ -3721,6 +3723,77 @@ async function fetchQuote(symbol, apiKey) {
     return null;
   }
 }
+var CRYPTO_IDS = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  SOL: "solana",
+  ADA: "cardano",
+  DOGE: "dogecoin",
+  XRP: "ripple",
+  DOT: "polkadot",
+  AVAX: "avalanche-2",
+  MATIC: "matic-network",
+  LINK: "chainlink",
+  ATOM: "cosmos",
+  UNI: "uniswap",
+  LTC: "litecoin",
+  BCH: "bitcoin-cash",
+  NEAR: "near",
+  APT: "aptos",
+  ARB: "arbitrum",
+  OP: "optimism",
+  SUI: "sui",
+  FIL: "filecoin",
+  SHIB: "shiba-inu",
+  PEPE: "pepe",
+  TRX: "tron",
+  TON: "the-open-network",
+  BNB: "binancecoin",
+  USDT: "tether",
+  USDC: "usd-coin"
+};
+function getCoinGeckoId(ticker) {
+  return CRYPTO_IDS[ticker] || ticker.toLowerCase();
+}
+async function fetchCryptoPrices(tickers) {
+  if (tickers.length === 0) return {};
+  const ids = tickers.map(getCoinGeckoId).join(",");
+  try {
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      log(`CoinGecko error: HTTP ${resp.status}`);
+      return {};
+    }
+    const data = await resp.json();
+    const result = {};
+    for (const ticker of tickers) {
+      const id = getCoinGeckoId(ticker);
+      if (data[id]) result[ticker] = data[id];
+    }
+    return result;
+  } catch (e) {
+    log(`CoinGecko fetch failed: ${e}`);
+    return {};
+  }
+}
+function syncCryptoToVariables(ticker, price) {
+  const p = `stock.${ticker}`;
+  setVariable(`${p}.price`, String(price.usd));
+  const change = price.usd_24h_change || 0;
+  const changeDollar = price.usd * (change / 100);
+  setVariable(`${p}.change`, changeDollar.toFixed(2));
+  setVariable(`${p}.change_pct`, change.toFixed(2));
+  const direction = change > 0 ? "up" : change < 0 ? "down" : "flat";
+  setVariable(`${p}.direction`, direction);
+  setVariable(`${p}.arrow`, direction === "up" ? "\u2191" : direction === "down" ? "\u2193" : "\u2192");
+  setVariable(`${p}.color`, direction === "up" ? "#00c853" : direction === "down" ? "#ff1744" : "#888888");
+  setVariable(`${p}.price_usd`, `$${price.usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const sign = changeDollar > 0 ? "+" : "";
+  setVariable(`${p}.change_signed`, `${sign}${changeDollar.toFixed(2)}`);
+  const now = /* @__PURE__ */ new Date();
+  setVariable(`${p}.updated`, now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+}
 function syncQuoteToVariables(symbol, quote) {
   const p = `stock.${symbol}`;
   setVariable(`${p}.price`, String(quote.c));
@@ -3741,22 +3814,29 @@ function syncQuoteToVariables(symbol, quote) {
   setVariable(`${p}.updated`, now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
 }
 async function pollAll(config2) {
-  if (!config2.apiKey) {
-    log("No API key configured, skipping poll");
-    return;
-  }
-  if (config2.symbols.length === 0) {
+  const hasStocks = config2.symbols.length > 0 && config2.apiKey;
+  const hasCrypto = config2.crypto.length > 0;
+  if (!hasStocks && !hasCrypto) {
     log("No symbols configured, skipping poll");
     return;
   }
-  log(`Polling ${config2.symbols.length} symbols...`);
-  for (const symbol of config2.symbols) {
-    const quote = await fetchQuote(symbol, config2.apiKey);
-    if (quote && quote.c !== 0) {
-      syncQuoteToVariables(symbol, quote);
+  if (hasStocks) {
+    log(`Polling ${config2.symbols.length} stocks...`);
+    for (const symbol of config2.symbols) {
+      const quote = await fetchQuote(symbol, config2.apiKey);
+      if (quote && quote.c !== 0) {
+        syncQuoteToVariables(symbol, quote);
+      }
+      if (config2.symbols.indexOf(symbol) < config2.symbols.length - 1) {
+        await sleep(200);
+      }
     }
-    if (config2.symbols.indexOf(symbol) < config2.symbols.length - 1) {
-      await sleep(200);
+  }
+  if (hasCrypto) {
+    log(`Polling ${config2.crypto.length} crypto...`);
+    const prices = await fetchCryptoPrices(config2.crypto);
+    for (const [ticker, price] of Object.entries(prices)) {
+      syncCryptoToVariables(ticker, price);
     }
   }
 }
@@ -3805,7 +3885,8 @@ function startPolling() {
   pollAll(config);
   const intervalMs = config.intervalMinutes * 60 * 1e3;
   pollTimer = setInterval(() => pollAll(config), intervalMs);
-  log(`Polling every ${config.intervalMinutes}m for: ${config.symbols.join(", ") || "(none)"}`);
+  const all = [...config.symbols.map((s) => s), ...config.crypto.map((s) => `${s}`)];
+  log(`Polling every ${config.intervalMinutes}m for: ${all.join(", ") || "(none)"}`);
 }
 fs.watchFile(CONFIG_PATH, { interval: 2e3 }, () => {
   log("Config changed, reloading...");

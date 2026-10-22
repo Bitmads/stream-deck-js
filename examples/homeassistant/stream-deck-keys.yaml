@@ -1,0 +1,64 @@
+# ══════════════════════════════════════════════════════════════
+# Example Stream Deck Key Configurations for Home Assistant
+# ══════════════════════════════════════════════════════════════
+#
+# These are examples of how to configure keys in the Open Stream Deck UI
+# for controlling Home Assistant.
+#
+# ── KEY 0: Living Room Lights Toggle ──
+# Look tab:
+#   Background color: #000000
+#   Icon: "lightbulb" from Lucide (color: #ffd700, size: 40)
+#   Text Layer 1: "{{$ha.light.living}}" (shows ON/OFF live)
+#     Font size: 12, Color: #ffffff, V-Align: bottom
+#
+# Action tab:
+#   Action: HTTP Request
+#   URL: http://192.168.1.100:8123/api/webhook/deck-lights-toggle
+#   Method: POST
+#
+# ── KEY 1: Temperature Display ──
+# Look tab:
+#   Background color: #1a1a2e
+#   Icon: "thermometer" from Lucide (color: #ff6b6b, size: 36)
+#   Text Layer 1: "{{$ha.temp.living}}" (shows "22.5°C" live)
+#     Font size: 16, Color: #ffffff, V-Align: bottom
+#   Text Layer 2: "Living" (static label)
+#     Font size: 10, Color: #888888, V-Align: top
+#
+# Action tab:
+#   Action: none (display only)
+#
+# ── KEY 2: Front Door Status ──
+# Look tab:
+#   Background color: #000000
+#   Icon: "door-open" from Material Design Icons (color: #ff4444, size: 40)
+#   Text Layer 1: "{{$ha.door.front}}" (shows "OPEN" or "CLOSED")
+#     Font size: 11, Color: #ffffff, V-Align: bottom
+#
+# ── KEY 3: Media Now Playing ──
+# Look tab:
+#   Background color: #1a0a2e
+#   Icon: "music" from Lucide (color: #1db954, size: 32)
+#   Text Layer 1: "{{$ha.media.title}}" (shows song title)
+#     Font size: 10, Color: #ffffff, V-Align: middle
+#   Text Layer 2: "{{$ha.media.artist}}" (shows artist)
+#     Font size: 8, Color: #888888, V-Align: bottom
+#
+# Action tab:
+#   Action: HTTP Request
+#   URL: http://192.168.1.100:8123/api/webhook/deck-media-toggle
+#   Method: POST
+#
+# ── KEY 4: Scene Selector (Movie Mode) ──
+# Look tab:
+#   Background color: #2d1b69
+#   Icon: "film" from Lucide (color: #e040fb, size: 40)
+#   Text: "Movie"
+#
+# Action tab:
+#   Action: HTTP Request
+#   URL: http://192.168.1.100:8123/api/services/input_boolean/toggle
+#   Method: POST
+#   Headers: Authorization: Bearer YOUR_TOKEN
+#   Body: {"entity_id": "input_boolean.movie_mode"}

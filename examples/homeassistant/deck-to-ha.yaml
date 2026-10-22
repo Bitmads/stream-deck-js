@@ -1,0 +1,96 @@
+# ══════════════════════════════════════════════════════════════
+# Stream Deck → Home Assistant (button presses trigger HA)
+# ══════════════════════════════════════════════════════════════
+#
+# On the Stream Deck side, configure keys with "HTTP Request" action:
+#
+# ── Toggle living room lights ──
+#   URL: http://HA_IP:8123/api/services/light/toggle
+#   Method: POST
+#   Headers:
+#     Authorization: Bearer YOUR_HA_TOKEN
+#     Content-Type: application/json
+#   Body: {"entity_id": "light.living_room"}
+#
+# ── Trigger a HA automation ──
+#   URL: http://HA_IP:8123/api/services/automation/trigger
+#   Method: POST
+#   Headers:
+#     Authorization: Bearer YOUR_HA_TOKEN
+#   Body: {"entity_id": "automation.movie_mode"}
+#
+# ── Fire a HA webhook (no auth needed) ──
+#   URL: http://HA_IP:8123/api/webhook/deck-button-1
+#   Method: POST
+#   Body: {"action": "pressed"}
+#
+# ── Set an input_boolean ──
+#   URL: http://HA_IP:8123/api/services/input_boolean/toggle
+#   Method: POST
+#   Headers:
+#     Authorization: Bearer YOUR_HA_TOKEN
+#   Body: {"entity_id": "input_boolean.movie_mode"}
+#
+# ── Call a script ──
+#   URL: http://HA_IP:8123/api/services/script/turn_on
+#   Method: POST
+#   Headers:
+#     Authorization: Bearer YOUR_HA_TOKEN
+#   Body: {"entity_id": "script.goodnight"}
+#
+# ── Set thermostat ──
+#   URL: http://HA_IP:8123/api/services/climate/set_temperature
+#   Method: POST
+#   Headers:
+#     Authorization: Bearer YOUR_HA_TOKEN
+#   Body: {"entity_id": "climate.thermostat", "temperature": 22}
+#
+# ══════════════════════════════════════════════════════════════
+# HA Webhook automations (triggered by Stream Deck buttons)
+# Add these to your Home Assistant automations.yaml
+# ══════════════════════════════════════════════════════════════
+
+automation:
+  - alias: "Deck Button: Toggle all lights"
+    trigger:
+      - platform: webhook
+        webhook_id: deck-lights-toggle
+        allowed_methods: [POST]
+        local_only: true
+    action:
+      - service: light.toggle
+        target:
+          area_id: living_room
+
+  - alias: "Deck Button: Lock front door"
+    trigger:
+      - platform: webhook
+        webhook_id: deck-lock-door
+        allowed_methods: [POST]
+        local_only: true
+    action:
+      - service: lock.lock
+        target:
+          entity_id: lock.front_door
+
+  - alias: "Deck Button: Play/pause media"
+    trigger:
+      - platform: webhook
+        webhook_id: deck-media-toggle
+        allowed_methods: [POST]
+        local_only: true
+    action:
+      - service: media_player.media_play_pause
+        target:
+          entity_id: media_player.living_room
+
+  - alias: "Deck Button: Arm alarm"
+    trigger:
+      - platform: webhook
+        webhook_id: deck-alarm-arm
+        allowed_methods: [POST]
+        local_only: true
+    action:
+      - service: alarm_control_panel.alarm_arm_home
+        target:
+          entity_id: alarm_control_panel.home

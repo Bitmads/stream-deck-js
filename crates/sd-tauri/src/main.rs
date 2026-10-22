@@ -53,6 +53,8 @@ fn main() {
 
     let app_state = AppState::new();
     let var_rx = app_state.var_tx.subscribe();
+    let ws_variables = app_state.variables.clone();
+    let ws_var_tx = app_state.var_tx.clone();
 
     // Load app settings (tray behavior, start-minimized)
     let (minimize_to_tray_default, start_minimized) = load_app_settings();
@@ -69,6 +71,7 @@ fn main() {
             plugin_manager: app_state.plugin_manager.clone(),
             variables: app_state.variables.clone(),
             var_tx: app_state.var_tx.clone(),
+            ws_port: app_state.ws_port.clone(),
             minimize_to_tray: app_state.minimize_to_tray.clone(),
         },
         API_PORT,
@@ -129,8 +132,9 @@ fn main() {
                 .build(app)?;
 
             // Start plugin WebSocket server
-            let _ws_handle = ws_server::start_ws_server();
-            tracing::info!("Plugin server on port {}", _ws_handle.port);
+            let ws_handle = ws_server::start_ws_server(ws_variables, ws_var_tx);
+            tracing::info!("Plugin server on port {}", ws_handle.port);
+            app.state::<AppState>().ws_port.store(ws_handle.port, std::sync::atomic::Ordering::Relaxed);
 
             // Forward API variable changes to frontend
             let app_for_vars = app.handle().clone();
@@ -148,6 +152,19 @@ fn main() {
                         }
                     }
                 });
+            });
+
+            // Plugin health check (detect crashed plugins, auto-restart)
+            let health_pm = app.state::<AppState>().plugin_manager.clone();
+            let health_ws_port = app.state::<AppState>().ws_port.clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    let ws_port = health_ws_port.load(std::sync::atomic::Ordering::Relaxed);
+                    if let Ok(mut pm) = health_pm.lock() {
+                        pm.check_health(ws_port);
+                    }
+                }
             });
 
             // Load profiles from disk on startup
@@ -212,6 +229,9 @@ fn main() {
             commands::plugin::discover_external_plugins,
             commands::plugin::start_external_plugin,
             commands::plugin::stop_external_plugin,
+            commands::plugin::get_plugin_config_schema,
+            commands::plugin::read_plugin_config,
+            commands::plugin::write_plugin_config,
             commands::proxy::fetch_image_as_data_url,
         ])
         .run(tauri::generate_context!())

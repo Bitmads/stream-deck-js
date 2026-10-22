@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { width: 280px; padding: 16px; font-family: -apple-system, sans-serif; font-size: 13px; color: #e8e8e8; background: #1a1a2e; }
+    h3 { margin: 0 0 12px; font-size: 15px; }
+    .status { padding: 8px 12px; border-radius: 6px; margin-bottom: 8px; }
+    .status.ok { background: rgba(46,204,113,0.15); color: #2ecc71; }
+    .status.err { background: rgba(231,76,60,0.15); color: #e74c3c; }
+    .tabs { margin-top: 12px; }
+    .tab-item { padding: 6px 0; border-bottom: 1px solid #2a2a4a; display: flex; align-items: center; gap: 8px; }
+    .tab-item img { width: 16px; height: 16px; border-radius: 2px; }
+    .tab-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hint { color: #6a6a80; font-size: 11px; margin-top: 12px; line-height: 1.5; }
+    code { background: #2a2a4a; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h3>Open Stream Deck</h3>
+  <div id="status" class="status">Checking...</div>
+  <div id="tabs" class="tabs"></div>
+  <div class="hint">
+    Use in key text labels:<br>
+    <code>{{$chrome.pinned.0.title}}</code><br>
+    <code>{{$chrome.active.title}}</code>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

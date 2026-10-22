@@ -1,5 +1,20 @@
-import type { KeyAssignment } from "../stores/editor.svelte";
+import type { KeyAssignment, IconConfig } from "../stores/editor.svelte";
 import { resolveTemplate } from "../stores/variables.svelte";
+
+export function resolveActiveIcon(
+  assignment: { icon?: IconConfig; icons?: IconConfig[] },
+  resolve: (t: string) => string
+): IconConfig | undefined {
+  const icons = assignment.icons?.length ? assignment.icons : (assignment.icon ? [assignment.icon] : []);
+  if (icons.length === 0) return undefined;
+  for (const ic of icons) {
+    if (ic.variable && ic.svgBody) {
+      const varVal = resolve(ic.variable);
+      if (varVal === ic.value) return ic;
+    }
+  }
+  return icons.find(ic => !ic.variable && ic.svgBody) ?? (icons[0]?.svgBody ? icons[0] : undefined);
+}
 
 /**
  * Render complete key image on canvas.
@@ -47,12 +62,12 @@ export async function renderKeyToDataUrl(
     } catch {}
   }
 
-  // Layer 3: SVG icon (centered)
-  if (assignment.icon) {
-    const iconSize = assignment.icon.size || 48;
-    const color = assignment.icon.color || "#ffffff";
-    // Use a <style> block to force color on ALL child elements — avoids inheritance issues when loading SVG as <img>
-    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${assignment.icon.viewBox}" width="${iconSize}" height="${iconSize}"><style>*{fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}</style>${assignment.icon.svgBody}</svg>`;
+  // Layer 3: SVG icon (centered) — resolve conditional icons
+  const activeIcon = resolveActiveIcon(assignment, resolveTemplate);
+  if (activeIcon) {
+    const iconSize = activeIcon.size || 48;
+    const color = activeIcon.color || "#ffffff";
+    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${activeIcon.viewBox}" width="${iconSize}" height="${iconSize}"><style>*{fill:none;stroke:${color};stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}</style>${activeIcon.svgBody}</svg>`;
 
     try {
       const svgBase64 = btoa(unescape(encodeURIComponent(svgStr)));

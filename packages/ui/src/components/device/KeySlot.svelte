@@ -23,6 +23,10 @@
     for (const t of allTexts) {
       if (t?.text) for (const n of extractVariableNames(t.text)) names.add(n);
     }
+    const allIcons = a.icons?.length ? a.icons : [];
+    for (const ic of allIcons) {
+      if (ic.variable) for (const n of extractVariableNames(ic.variable)) names.add(n);
+    }
     if (names.size === 0) return "";
     return [...names].map(n => getVariable(n)).join("|");
   });

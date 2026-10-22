@@ -1,0 +1,139 @@
+# ══════════════════════════════════════════════════════════════
+# Open Stream Deck ↔ Home Assistant Integration
+# Add these to your Home Assistant configuration.yaml
+# ══════════════════════════════════════════════════════════════
+
+# ─── REST Commands (HA → Stream Deck) ────────────────────────
+
+rest_command:
+  # Set any variable on the Stream Deck
+  deck_set_variable:
+    url: "http://STREAM_DECK_IP:8484/api/variables/{{ name }}"
+    method: PUT
+    content_type: "application/json"
+    payload: '{"value": "{{ value }}"}'
+
+  # Execute an action on the Stream Deck
+  deck_execute_action:
+    url: "http://STREAM_DECK_IP:8484/api/actions/execute"
+    method: POST
+    content_type: "application/json"
+    payload: '{"action_type": "{{ action_type }}", "settings": {{ settings }}}'
+
+  # Set brightness
+  deck_set_brightness:
+    url: "http://STREAM_DECK_IP:8484/api/devices/{{ serial }}/brightness"
+    method: POST
+    content_type: "application/json"
+    payload: '{"percent": {{ percent }}}'
+
+
+# ─── Automations ─────────────────────────────────────────────
+
+automation:
+  # ── Live sensor data on Stream Deck keys ──
+
+  - alias: "Deck: Update temperature"
+    trigger:
+      - platform: state
+        entity_id: sensor.living_room_temperature
+    action:
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.temp.living"
+          value: "{{ states('sensor.living_room_temperature') }}°C"
+
+  - alias: "Deck: Update humidity"
+    trigger:
+      - platform: state
+        entity_id: sensor.living_room_humidity
+    action:
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.humidity.living"
+          value: "{{ states('sensor.living_room_humidity') }}%"
+
+  # ── Door/window sensor alerts ──
+
+  - alias: "Deck: Front door status"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.front_door
+    action:
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.door.front"
+          value: "{{ 'OPEN' if is_state('binary_sensor.front_door', 'on') else 'CLOSED' }}"
+
+  # ── Light status sync ──
+
+  - alias: "Deck: Living room lights"
+    trigger:
+      - platform: state
+        entity_id: light.living_room
+    action:
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.light.living"
+          value: "{{ 'ON' if is_state('light.living_room', 'on') else 'OFF' }}"
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.light.living.brightness"
+          value: "{{ state_attr('light.living_room', 'brightness') | default(0) | int }}"
+
+  # ── Media player info ──
+
+  - alias: "Deck: Media player"
+    trigger:
+      - platform: state
+        entity_id: media_player.living_room
+    action:
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.media.state"
+          value: "{{ states('media_player.living_room') }}"
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.media.title"
+          value: "{{ state_attr('media_player.living_room', 'media_title') | default('') }}"
+      - service: rest_command.deck_set_variable
+        data:
+          name: "ha.media.artist"
+          value: "{{ state_attr('media_player.living_room', 'media_artist') | default('') }}"
+
+  # ── Scene switching based on HA mode ──
+
+  - alias: "Deck: Movie mode scene"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.movie_mode
+        to: "on"
+    action:
+      # Switch the Stream Deck to a "Media" scene
+      # (You'd get the scene ID from the Open Stream Deck UI)
+      - service: rest_command.deck_execute_action
+        data:
+          action_type: "command"
+          settings: '{"command": "echo movie mode activated"}'
+
+  # ── Dim deck at night ──
+
+  - alias: "Deck: Night brightness"
+    trigger:
+      - platform: time
+        at: "22:00:00"
+    action:
+      - service: rest_command.deck_set_brightness
+        data:
+          serial: "YOUR_DEVICE_SERIAL"
+          percent: 30
+
+  - alias: "Deck: Day brightness"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: rest_command.deck_set_brightness
+        data:
+          serial: "YOUR_DEVICE_SERIAL"
+          percent: 80

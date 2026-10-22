@@ -44,8 +44,11 @@ export function setKeyText(keyIndex: number, textConfig: Parameters<typeof store
 export function addKeyText(keyIndex: number) { store.addKeyText(keyIndex); }
 export function removeKeyText(keyIndex: number, textIndex: number) { store.removeKeyText(keyIndex, textIndex); }
 export function getKeyTexts(keyIndex: number) { return store.getKeyTexts(keyIndex); }
-export function setKeyIcon(keyIndex: number, iconConfig: Parameters<typeof store.setKeyIcon>[1]) { store.setKeyIcon(keyIndex, iconConfig); }
+export function setKeyIcon(keyIndex: number, iconConfig: Parameters<typeof store.setKeyIcon>[1], iconIndex?: number) { store.setKeyIcon(keyIndex, iconConfig, iconIndex); }
 export function removeKeyIcon(keyIndex: number) { store.removeKeyIcon(keyIndex); }
+export function getKeyIcons(keyIndex: number) { return store.getKeyIcons(keyIndex); }
+export function addKeyIcon(keyIndex: number) { store.addKeyIcon(keyIndex); }
+export function removeKeyIconAt(keyIndex: number, iconIndex: number) { store.removeKeyIconAt(keyIndex, iconIndex); }
 export function togglePinned(keyIndex: number) { store.togglePinned(keyIndex); }
 export function isPinned(keyIndex: number) { return store.isPinned(keyIndex); }
 export function clearKey(keyIndex: number) { store.clearKey(keyIndex); }

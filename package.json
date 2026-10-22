@@ -1,39 +1,14 @@
 {
-  "name": "stream-deck-js",
-  "version": "1.0.0",
-  "description": "",
-  "main": "dist/app.js",
-  "bin": {
-    "strd": "./dist/cli/stream-deck-cli.js"
-  },
+  "name": "open-stream-deck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform Stream Deck controller with GUI and plugin system",
   "scripts": {
-    "start": "tsc && node dist/app.js",
-    "copy-assets": "cp -rv src/fonts/ dist/fonts/ && cp -rv src/scripts/ dist/scripts/ && cp -rv src/images/ dist/images/",
-    "dev": "npm run copy-assets && tsc-watch --onSuccess \"node ./dist/app.js\"\n",
-    "dev:app": "npm run dev",
-    "dev:cli": "tsc-watch --onSuccess \"npm i -g\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build",
+    "ui:dev": "pnpm --filter @open-stream-deck/ui dev",
+    "ui:build": "pnpm --filter @open-stream-deck/ui build",
+    "ui:check": "pnpm --filter @open-stream-deck/ui check"
   },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "@julusian/jpeg-turbo": "^1.1.1",
-    "@nut-tree/nut-js": "^1.7.0",
-    "active-win": "^7.6.1",
-    "elgato-stream-deck": "^4.1.0",
-    "open": "^8.4.0",
-    "pureimage": "^0.3.5",
-    "rxjs": "^7.4.0",
-    "sharp": "^0.29.2",
-    "shelljs": "^0.8.4",
-    "stream-buffers": "^3.0.2",
-    "yargs": "^17.3.0"
-  },
-  "devDependencies": {
-    "@types/sharp": "^0.29.2",
-    "@types/yargs": "^17.0.7",
-    "tsc-watch": "^4.5.0",
-    "tslint": "^6.1.3",
-    "typescript": "^4.4.4"
-  }
+  "license": "MIT"
 }

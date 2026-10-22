@@ -4,6 +4,7 @@
     setKeyImage, removeKeyImage, setKeyBackgroundColor, setKeyText, setKeyIcon, removeKeyIcon,
     clearKey, defaultTextConfig, assignAction, searchActions, getScenes, toggleFavorite, isFavorite,
     addKeyText, removeKeyText, getKeyTexts, togglePinned, isPinned,
+    getKeyIcons, addKeyIcon, removeKeyIconAt,
     getEncoderConfig, setEncoderConfig, defaultEncoderConfig,
     getStripConfig, updateStripItem, removeStripItem, getSelectedStripItemId,
   } from "../../lib/stores/editor.svelte";
@@ -23,6 +24,8 @@
   let encoderCfg = $derived(selectedEncoder !== null ? (getEncoderConfig(selectedEncoder) || defaultEncoderConfig()) : null);
   let texts = $derived(selectedKey !== null ? getKeyTexts(selectedKey) : []);
   let activeTextIndex = $state(0);
+  let icons = $derived(selectedKey !== null ? getKeyIcons(selectedKey) : []);
+  let activeIconIndex = $state(0);
   let isEncoder = $derived(selectedEncoder !== null);
   let stripItemId = $derived(getSelectedStripItemId());
   let stripItem = $derived(() => {
@@ -109,8 +112,34 @@
     setTimeout(() => { activeTextIndex = newIdx; }, 0);
   }
   function handleRemoveText(index: number) { if (selectedKey === null) return; removeKeyText(selectedKey, index); if (activeTextIndex >= texts.length - 1) activeTextIndex = Math.max(0, texts.length - 2); }
-  function handleIconSelect(setId: string, name: string, body: string, viewBox: string, color: string, size: number) { if (selectedKey !== null) setKeyIcon(selectedKey, { setId, iconName: name, svgBody: body, color, size, viewBox }); }
-  function handleIconStyleChange(color: string, size: number) { if (selectedKey === null || !assignment?.icon) return; setKeyIcon(selectedKey, { ...assignment.icon, color, size }); }
+  function handleIconSelect(setId: string, name: string, body: string, viewBox: string, color: string, size: number) {
+    if (selectedKey === null) return;
+    const existing = icons[activeIconIndex];
+    setKeyIcon(selectedKey, { setId, iconName: name, svgBody: body, color, size, viewBox, variable: existing?.variable, value: existing?.value }, activeIconIndex);
+  }
+  function handleIconStyleChange(color: string, size: number) {
+    if (selectedKey === null) return;
+    const ic = icons[activeIconIndex] ?? assignment?.icon;
+    if (!ic) return;
+    setKeyIcon(selectedKey, { ...ic, color, size }, activeIconIndex);
+  }
+  function handleAddIcon() {
+    if (selectedKey === null) return;
+    const newIdx = icons.length;
+    addKeyIcon(selectedKey);
+    setTimeout(() => { activeIconIndex = newIdx; }, 0);
+  }
+  function handleRemoveIconAt(index: number) {
+    if (selectedKey === null) return;
+    removeKeyIconAt(selectedKey, index);
+    if (activeIconIndex >= icons.length - 1) activeIconIndex = Math.max(0, icons.length - 2);
+  }
+  function handleIconConditionChange(field: 'variable' | 'value', val: string) {
+    if (selectedKey === null) return;
+    const ic = icons[activeIconIndex];
+    if (!ic) return;
+    setKeyIcon(selectedKey, { ...ic, [field]: val }, activeIconIndex);
+  }
   function handleClear() { if (selectedKey !== null) clearKey(selectedKey); }
   function handleSettingChange(key: string, value: string) { if (selectedKey !== null) updateKeySetting(selectedKey, key, value); }
   function handleAssignAction(action: ActionDef) { if (selectedKey !== null) { assignAction(selectedKey, action); actionQuery = ""; actionPickerOpen = false; } }
@@ -485,14 +514,51 @@
         {/if}
 
         <!-- Icon -->
-        {#if assignment?.icon}
+        {#if icons.length > 0}
           <button class="section-toggle" onclick={() => showIcon = !showIcon}>
             <span>Icon</span>
             <span class="section-arrow" class:open={showIcon}></span>
           </button>
           {#if showIcon}
             <div class="section-body">
-              <div class="img-row"><button class="icon-thumb" onclick={() => activeTab="icons"}><svg viewBox={assignment.icon.viewBox} width="32" height="32" fill="none" stroke={assignment.icon.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html assignment.icon.svgBody}</svg></button><span class="icon-name">{assignment.icon.iconName}</span><button class="sm-btn danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button></div>
+              <div class="text-tabs">
+                {#each icons as ic, i}
+                  <button class="text-tab" class:active={activeIconIndex === i} onclick={() => activeIconIndex = i}>
+                    <span class="text-tab-label">
+                      {#if ic.svgBody}<svg viewBox={ic.viewBox} width="12" height="12" fill="none" stroke={ic.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html ic.svgBody}</svg>{/if}
+                      {ic.iconName || `Icon ${i + 1}`}
+                    </span>
+                  </button>
+                {/each}
+                <button class="text-tab text-tab-add" onclick={handleAddIcon}>+</button>
+              </div>
+              {#if icons[activeIconIndex]}
+                {@const ic = icons[activeIconIndex]}
+                <div class="text-tab-actions">
+                  {#if icons.length > 1}
+                    <button class="text-tab-action danger" onclick={() => handleRemoveIconAt(activeIconIndex)}>Remove</button>
+                  {:else}
+                    <button class="text-tab-action danger" onclick={() => { if (selectedKey !== null) removeKeyIcon(selectedKey); }}>Remove</button>
+                  {/if}
+                </div>
+                <div class="img-row">
+                  <button class="icon-thumb" onclick={() => activeTab = "icons"}>
+                    {#if ic.svgBody}
+                      <svg viewBox={ic.viewBox} width="32" height="32" fill="none" stroke={ic.color} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">{@html ic.svgBody}</svg>
+                    {:else}
+                      <span style="color:var(--text-muted);font-size:20px;">?</span>
+                    {/if}
+                  </button>
+                  <span class="icon-name">{ic.iconName || 'Pick icon...'}</span>
+                </div>
+                {#if icons.length > 1}
+                  <label class="fl">Show when</label>
+                  <div class="icon-cond">
+                    <VarInput value={ic.variable || ''} placeholder={"{{$ha.light.state}}"} onchange={(v) => handleIconConditionChange('variable', v)} />
+                    <div class="ef"><label>equals</label><input type="text" value={ic.value || ''} placeholder="on" oninput={(e) => handleIconConditionChange('value', (e.target as HTMLInputElement).value)} /></div>
+                  </div>
+                {/if}
+              {/if}
             </div>
           {/if}
         {/if}
@@ -530,7 +596,7 @@
 
       <!-- ═══ ICONS TAB ═══ -->
       {:else if activeTab === "icons" && !isEncoder}
-        <IconBrowser onSelect={handleIconSelect} onStyleChange={handleIconStyleChange} currentColor={assignment?.icon?.color} currentSize={assignment?.icon?.size} />
+        <IconBrowser onSelect={handleIconSelect} onStyleChange={handleIconStyleChange} currentColor={icons[activeIconIndex]?.color ?? assignment?.icon?.color} currentSize={icons[activeIconIndex]?.size ?? assignment?.icon?.size} />
       {/if}
     </div>
   {/if}
@@ -669,4 +735,5 @@
   .ma-step-delay span { font-size: 10px; color: var(--text-muted); }
   .ma-add { width: 100%; padding: 6px; border-radius: 4px; background: var(--bg-primary); color: var(--text-muted); font-size: 11px; cursor: pointer; text-align: center; border: 1px dashed var(--border); }
   .ma-add:hover { color: var(--accent); border-color: var(--accent); }
+  .icon-cond { display: flex; flex-direction: column; gap: 4px; }
 </style>
