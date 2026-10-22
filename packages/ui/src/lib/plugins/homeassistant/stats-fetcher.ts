@@ -110,10 +110,12 @@ export class HAStatsFetcher {
   }
 
   private async periodChange(id: string, period: "day" | "month"): Promise<number | null> {
-    const r = await ha.sendCommand({
+    // sendCommand resolves with the whole result message; the data is in `.result`.
+    const msg = await ha.sendCommand({
       type: "recorder/statistic_during_period", statistic_id: id, calendar: { period }, types: ["change"],
     });
-    return typeof r?.change === "number" ? r.change : null;
+    const change = msg?.result?.change;
+    return typeof change === "number" ? change : null;
   }
 
   private async fetchEnergy() {
@@ -133,11 +135,12 @@ export class HAStatsFetcher {
     if (!this.sources.power.length) return;
     const end = new Date();
     const start = new Date(end.getTime() - 24 * 3600_000);
-    const res: Record<string, StatRow[]> = await ha.sendCommand({
+    const msg = await ha.sendCommand({
       type: "recorder/statistics_during_period",
       start_time: start.toISOString(), end_time: end.toISOString(),
       statistic_ids: this.sources.power, period: "5minute", types: ["mean", "max"],
-    }) ?? {};
+    });
+    const res: Record<string, StatRow[]> = msg?.result ?? {};
     for (const id of this.sources.power) {
       const s = summarizeSeries(res[id]);
       this.setVar(`ha.${id}.stats.avg_24h`, statValue(s.avg, 1));
