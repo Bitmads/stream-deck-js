@@ -2,10 +2,14 @@ import { store } from "../../stores/store.svelte";
 import { resolveTemplate } from "../../stores/variables.svelte";
 import { ha, parseJsonObject } from "./client";
 import HASettings from "./HASettings.svelte";
+import { HAStatsFetcher } from "./stats-fetcher";
 import type { PluginDef } from "../../stores/plugins.svelte";
 
 const HA_SERVICE_ACTION = { id: "ha-service", label: "HA Service Call", icon: "🏠", color: "#03a9f4" };
 const HA_CUSTOM_ACTION = { id: "ha-custom", label: "HA Custom JSON", icon: "🏠", color: "#0288d1" };
+
+/** Long-term statistics (energy totals, 24h power charts) of watched sensors as variables. */
+const statsFetcher = new HAStatsFetcher((name, value) => store.setVariableLocal(name, value));
 
 async function initHAPlugin() {
   // Wire variable setter so HA state changes push into the app store
@@ -15,12 +19,14 @@ async function initHAPlugin() {
   // client after every successful (re)authentication.
   await ha.loadWatchList();
   const config = await ha.loadConfig();
+  statsFetcher.start();
   if (config?.url && config?.token) {
     ha.connect(config.url, config.token);
   }
 }
 
 async function destroyHAPlugin() {
+  statsFetcher.stop();
   ha.disconnect();
 }
 
@@ -31,6 +37,7 @@ async function destroyHAPlugin() {
 export async function reloadHaWatchList(): Promise<void> {
   await ha.loadWatchList();
   ha.syncAllWatchedToVariables();
+  void statsFetcher.refresh();
 }
 
 /** Resolve {{$var}} templates in every string leaf of a parsed JSON value. */

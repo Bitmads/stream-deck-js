@@ -5,6 +5,7 @@ import type {
   ActionDef, EncoderConfig, IconConfig, KeyAssignment, Scene, StripItem, TextConfig,
 } from "../../ui/src/lib/types/profile.ts";
 import { walkTemplates, NESTED_MARK, isKnownFilter, isUsableColor } from "../../ui/src/lib/utils/template.ts";
+import { pickStatSources } from "../../ui/src/lib/plugins/homeassistant/stats.ts";
 import { cloneJson, normalizeProfile } from "../../ui/src/lib/utils/profile.ts";
 import { parseSteps } from "../../ui/src/lib/plugins/multi-action/steps.ts";
 import { ZERO_WHEN_NULL_ATTRS } from "../../ui/src/lib/plugins/homeassistant/mapping.ts";
@@ -476,6 +477,7 @@ function checkHaStates(built: BuiltDeck, states: HaStateLite[], issues: Issues):
         const st = byId.get(r.entity);
         if (!st) { noteMissing(r.entity, r.path); continue; }
         if (r.attr === "state" || r.attr === "friendly_name") continue;
+        if (r.attr.startsWith("stats.")) { checkStatsAttr(r.entity, r.attr, st, r.path, issues); continue; }
         const attrs = st.attributes ?? {};
         const once = `${scene.id}|${r.entity}|${r.attr}`;
         if (attrWarned.has(once)) continue;
@@ -554,4 +556,19 @@ export function validateDeck(built: BuiltDeck, opts: ValidateOptions = {}): Issu
 
 export function hasErrors(issues: Issue[]): boolean {
   return issues.some(i => i.level === "error");
+}
+
+/** Synthetic `stats.*` attributes published by the app's HA statistics fetcher (stats-fetcher.ts). */
+const ENERGY_STATS = new Set(["stats.today", "stats.month"]);
+const POWER_STATS = new Set(["stats.avg_24h", "stats.max_24h", "stats.chart_24h"]);
+
+function checkStatsAttr(entity: string, attr: string, st: { attributes?: Record<string, any> }, path: string, issues: Issues): void {
+  const src = pickStatSources([{ entity_id: entity, state: "", attributes: st.attributes ?? {} }], new Set([entity]));
+  if (ENERGY_STATS.has(attr)) {
+    if (!src.energy.length) issues.error(path, `${entity}.${attr}: only energy sensors (device_class energy, state_class total/total_increasing) get ${attr}`);
+  } else if (POWER_STATS.has(attr)) {
+    if (!src.power.length) issues.error(path, `${entity}.${attr}: only power sensors (device_class power, state_class measurement) get ${attr}`);
+  } else {
+    issues.error(path, `${entity}.${attr}: unknown statistics attribute (known: ${[...ENERGY_STATS, ...POWER_STATS].join(", ")})`);
+  }
 }

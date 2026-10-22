@@ -97,6 +97,21 @@ describe("validateDeck", () => {
     expect(validateDeck(deckWith({ encoders: { 0: haDial("humidifier.h") } }))).toEqual([]);
   });
 
+  it("checks synthetic stats.* attributes against the sensor kind", () => {
+    const P = "sensor.plug_power", E = "sensor.plug_energy";
+    const states = [
+      { entity_id: P, state: "5", attributes: { device_class: "power", state_class: "measurement" } },
+      { entity_id: E, state: "1", attributes: { device_class: "energy", state_class: "total_increasing" } },
+    ];
+    const ok = deckWith({ keys: { 0: key({ text: `${ha(E, "stats.month")} ${ha(P, "stats.chart_24h")} ${ha(P, "stats.avg_24h")}` }) } });
+    expect(validateDeck(ok, { haStates: states })).toEqual([]);
+    const bad = deckWith({ keys: { 0: key({ text: `${ha(P, "stats.month")} ${ha(E, "stats.max_24h")} ${ha(E, "stats.week")}` }) } });
+    const issues = validateDeck(bad, { haStates: states });
+    expectError(issues, /plug_power\.stats\.month: only energy sensors/);
+    expectError(issues, /plug_energy\.stats\.max_24h: only power sensors/);
+    expectError(issues, /stats\.week: unknown statistics attribute/);
+  });
+
   it("collects watched entities and checks them against a states file", () => {
     const built = deckWith({
       keys: { 0: key({ action: haToggle("switch.ghost"), text: `${ha(LIGHT, "brightness")} ${ha(LIGHT, "effect_list")} ${ha("sensor.nope")}` }) },

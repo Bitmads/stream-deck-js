@@ -97,6 +97,16 @@ Colors from templates must resolve to `#hex`, `rgb()`/`rgba()`, `hsl()`/`hsla()`
 
 **External variables** can be set via the REST API (`PUT /api/variables/{name}`) or from Home Assistant watched entities (`ha.<entity_id>.<attribute>`).
 
+**Home Assistant statistics** (long-term statistics of watched sensors, refreshed every 5 minutes and on reconnect):
+
+| Variable | Source | Value |
+|---|---|---|
+| `ha.<sensor>.stats.today`, `ha.<sensor>.stats.month` | energy sensors (`device_class: energy`, `state_class: total`/`total_increasing`) | kWh since midnight / the 1st (HA time zone) |
+| `ha.<sensor>.stats.avg_24h`, `ha.<sensor>.stats.max_24h` | power sensors (`device_class: power`, `state_class: measurement`) | W over the last 24 h (5-minute statistics) |
+| `ha.<sensor>.stats.chart_24h` | power sensors | PNG data URL of the 24 h curve (use as a strip/key image URL) |
+| `ha_stats.power_now` | all watched power sensors | W, current sum |
+| `ha_stats.energy_today`, `ha_stats.energy_month` | all watched energy sensors | kWh, sums |
+
 ## Plugin System
 
 Plugins use the Elgato Stream Deck SDK folder format, with a subset of its protocol:
